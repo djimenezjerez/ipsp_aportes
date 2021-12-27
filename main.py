@@ -10,7 +10,8 @@ from os.path import exists as path_exists
 from os.path import isfile as file_exists
 from tkinter import filedialog as fd
 from tkinter.messagebox import showerror, showinfo
-from shutil import move as copy_file
+from shutil import move as move_file
+from shutil import copy as copy_file
 from openpyxl import load_workbook
 from fillpdf import fillpdfs
 from num2words import num2words
@@ -137,6 +138,8 @@ def select_folder():
         config.set('OUTPUT', 'path', pathname)
         output_path.set(pathname)
         save_config(False)
+        tab1.progress.set('0/0')
+        tab1.progress_success.set(0)
         return True
     else:
         return False
@@ -145,13 +148,8 @@ def select_excel_input_file():
     if (select_file([('Excel', '*.xlsx'), ('Excel', '*.XLSX'), ('Excel', '*.xls'), ('Excel', '*.XLS')], 'INPUT') == True):
         config.set('INPUT', 'path', excel_input_path.get())
         save_config(False)
-    else:
-        excel_input_path.set(file_empty_message)
-        showerror(
-            title='Error en la configuración',
-            message='Corrija los datos de la configuración.'
-        )
-        notebook.select(1)
+        tab1.progress.set('0/0')
+        tab1.progress_success.set(0)
 
 def fill_pdf_template(data):
     data_dict = fillpdfs.get_form_fields(Path(pdf_form_path.get()))
@@ -175,6 +173,14 @@ def fill_pdf_template(data):
         fillpdfs.write_fillable_pdf(Path(pdf_form_path.get()), out_file, data_dict, flatten=False)
 
 def generate_pdfs():
+    if not file_exists(config['FORM']['path']):
+        pdf_form_path.set(file_empty_message)
+        showerror(
+            title='Error en la configuración',
+            message='El archivo plantilla PDF no existe, seleccione nuevamente.'
+        )
+        notebook.select(1)
+        return None
     if not path_exists(config['OUTPUT']['path']):
         output_path.set(path_empty_message)
         showerror(
@@ -207,7 +213,7 @@ def generate_pdfs():
         excel_input_path.set(file_empty_message)
         showerror(
             title='Error al cargar la hoja de cálculo Excel',
-            message='El archivo no existe o no corresponde a la plantilla de datos.'
+            message='El archivo Excel no existe o no corresponde a la plantilla de datos.'
         )
         return None
     tab1.progress_success.set(0)
@@ -249,25 +255,25 @@ ttk.Label(tab1, text='Hoja de cálculo Excel de aportantes', font=('Arial', '14'
 ttk.Label(tab1, text='Archivo Excel:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=0, row=1, padx=10, pady=5)
 ttk.Label(tab1, text='', font=('Arial', '12', 'normal'), anchor='w', textvariable=excel_input_path, wraplength=340).grid(sticky='WE', column=1, row=1, padx=10, pady=5, columnspan=2)
 button_file = ttk.Button(tab1, text='Seleccionar archivo', style='custom_button.TButton', command=select_excel_input_file)
-button_file.grid(sticky='W', column=3, row=1, padx=10, pady=5)
+button_file.grid(sticky='E', column=3, row=1, padx=10, pady=5)
 
 ttk.Label(tab1, text='Carpeta donde se exportarán los formularios', font=('Arial', '14', 'bold underline')).grid(sticky='W', column=0, row=2, padx=10, pady=10, columnspan=4)
 
 ttk.Label(tab1, text='Carpeta destino:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=0, row=3, padx=10, pady=5)
 ttk.Label(tab1, text='', font=('Arial', '12', 'normal'), anchor='w', textvariable=output_path, wraplength=340).grid(sticky='WE', column=1, row=3, padx=10, pady=5, columnspan=2)
 button_folder = ttk.Button(tab1, text='Seleccionar carpeta', style='custom_button.TButton', command=lambda:select_folder())
-button_folder.grid(sticky='W', column=3, row=3, padx=10, pady=5)
+button_folder.grid(sticky='E', column=3, row=3, padx=10, pady=5)
 
 ttk.Label(tab1, text='Desde fila:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=0, row=4, padx=10, pady=5)
-entry_row_from = ttk.Entry(tab1, takefocus=0, textvariable=tab1.row_from)
+entry_row_from = ttk.Entry(tab1, font=('Arial', '12', 'normal'), takefocus=0, textvariable=tab1.row_from)
 entry_row_from.grid(sticky='WE', column=1, row=4, padx=10, pady=5)
 ttk.Label(tab1, text='Hasta fila:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=2, row=4, padx=10, pady=5)
-entry_row_to = ttk.Entry(tab1, takefocus=0, textvariable=tab1.row_to)
+entry_row_to = ttk.Entry(tab1, font=('Arial', '12', 'normal'), takefocus=0, textvariable=tab1.row_to)
 entry_row_to.grid(sticky='WE', column=3, row=4, padx=10, pady=5)
 
 ttk.Label(tab1, text='Progreso:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=0, row=5, padx=10, pady=5)
 ttk.Label(tab1, text='', font=('Arial', '12', 'normal'), anchor='w', textvariable=tab1.progress).grid(sticky='WE', column=1, row=5, padx=10, pady=5)
-ttk.Label(tab1, text='PDFs generados:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=2, row=5, padx=10, pady=5)
+ttk.Label(tab1, text='Recibos generados:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=2, row=5, padx=10, pady=5)
 ttk.Label(tab1, text='', font=('Arial', '12', 'normal'), anchor='w', textvariable=tab1.progress_success).grid(sticky='WE', column=3, row=5, padx=10, pady=5)
 
 button_run = ttk.Button(tab1, text='Generar formularios', style='custom_button.TButton', command=generate_pdfs)
@@ -275,21 +281,21 @@ button_run.grid(sticky='E', column=3, row=6, padx=10, pady=20)
 
 # Ventana configuración
 
-ttk.Label(tab2, text='Datos de la autoridad firmante', font=('Arial', '14', 'bold underline')).grid(sticky='W', column=0, row=0, padx=10, pady=10, columnspan=3)
+ttk.Label(tab2, text='Datos de la autoridad firmante', font=('Arial', '14', 'bold underline')).grid(sticky='W', column=0, row=0, padx=10, pady=10, columnspan=4)
 
 ttk.Label(tab2, text='Nombre:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=0, row=1, padx=0, pady=5)
 signer_name = tk.StringVar(root, config['SIGNER']['name'] if config.has_option('SIGNER', 'name') else '')
-ttk.Entry(tab2, takefocus=0, textvariable=signer_name, validate='focusout', validatecommand=(empty_validation_command, '%P'), invalidcommand=(empty_message_error_command)).grid(sticky='WE', column=1, row=1, padx=10, pady=5, columnspan=2)
+ttk.Entry(tab2, font=('Arial', '12', 'normal'), takefocus=0, textvariable=signer_name, validate='focusout', validatecommand=(empty_validation_command, '%P'), invalidcommand=(empty_message_error_command)).grid(sticky='WE', column=1, row=1, padx=10, pady=5, columnspan=3)
 
 ttk.Label(tab2, text='Cargo:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=0, row=2, padx=0, pady=5)
 signer_charge = tk.StringVar(root, config['SIGNER']['charge'] if config.has_option('SIGNER', 'charge') else '')
-ttk.Entry(tab2, takefocus=0, textvariable=signer_charge, validate='focusout', validatecommand=(empty_validation_command, '%P'), invalidcommand=(empty_message_error_command)).grid(sticky='WE', column=1, row=2, padx=10, pady=5, columnspan=2)
+ttk.Entry(tab2, font=('Arial', '12', 'normal'), takefocus=0, textvariable=signer_charge, validate='focusout', validatecommand=(empty_validation_command, '%P'), invalidcommand=(empty_message_error_command)).grid(sticky='WE', column=1, row=2, padx=10, pady=5, columnspan=3)
 
-ttk.Label(tab2, text='Plantilla de formulario pdf', font=('Arial', '14', 'bold underline')).grid(sticky='W', column=0, row=3, padx=10, pady=10, columnspan=3)
+ttk.Label(tab2, text='Plantilla de formulario pdf', font=('Arial', '14', 'bold underline')).grid(sticky='W', column=0, row=3, padx=10, pady=10, columnspan=4)
 
 ttk.Label(tab2, text='Formulario PDF:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=0, row=4, padx=10, pady=5)
-ttk.Label(tab2, text='', font=('Arial', '12', 'normal'), anchor='w', textvariable=pdf_form_path, wraplength=340).grid(sticky='WE', column=1, row=4, padx=10, pady=5)
-ttk.Button(tab2, text='Seleccionar archivo', style='custom_button.TButton', command=lambda:select_file([('pdf file', '*.pdf'), ('pdf file', '*.PDF')], 'FORM')).grid(sticky='W', column=2, row=4, padx=10, pady=5)
+ttk.Label(tab2, text='', font=('Arial', '12', 'normal'), anchor='w', textvariable=pdf_form_path, wraplength=340).grid(sticky='WE', column=1, row=4, padx=10, pady=5, columnspan=2)
+ttk.Button(tab2, text='Seleccionar archivo', style='custom_button.TButton', command=lambda:select_file([('pdf file', '*.pdf'), ('pdf file', '*.PDF')], 'FORM')).grid(sticky='E', column=3, row=4, padx=10, pady=5)
 
 def save_config(show_info=True):
     signer_name_value = signer_name.get().strip().upper()
@@ -301,7 +307,8 @@ def save_config(show_info=True):
         config.set('SIGNER', 'name', signer_name_value)
         config.set('SIGNER', 'charge', signer_charge_value)
         if file_pdf_path != pdf_form_path.get():
-            copy_file(pdf_form_path.get(), file_pdf_path)
+            copy_file(pdf_form_path.get(), file_pdf_path+'_TMP')
+            move_file(file_pdf_path+'_TMP', file_pdf_path)
             config.set('FORM', 'path', file_pdf_path)
             pdf_form_path.set(file_pdf_path)
         with open(file_config_path, 'w') as configfile:
@@ -310,7 +317,7 @@ def save_config(show_info=True):
             showinfo(title='Configuración', message='Configuración guardada exitosamente.')
             notebook.select(0)
 
-ttk.Button(tab2, text='Guardar', style='custom_button.TButton', command=save_config).grid(sticky='E', column=2, row=5, padx=10, pady=20)
+ttk.Button(tab2, text='Guardar', style='custom_button.TButton', command=save_config).grid(sticky='E', column=3, row=5, padx=10, pady=20)
 
 if path_exists(file_config_path):
     notebook.select(0)
@@ -321,4 +328,5 @@ icon = tk.PhotoImage(data='iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAABGdBT
 root.tk.call('wm', 'iconphoto', root._w, icon)
 
 root.geometry('')
+root.resizable(False, False)
 root.mainloop()
