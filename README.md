@@ -1,6 +1,6 @@
 # AUTOMATIZACIÓN DE LLENADO DE FORMULARIO DE APORTES
 
-## DETALLE DEL SOFTWARE
+## ACERCA DEL SOFTWARE
 
 Este software fue desarrollado para automatizar el llenado de los formularios de aportes de militantes del MAS-IPSP, para el mismo se precisa de las plantillas de [Recibo de Aporte en PDF](includes/PLANTILLA_FORMULARIO.pdf) y la plantilla de [Hoja de Excel de Aportantes](includes/PLANTILLA_APORTANTES.xlsx).
 
@@ -25,3 +25,8 @@ Para generar el archivo ejecutable se debe ejecutar el siguiente comando:
 ```sh
 pyinstaller --onefile --windowed --icon=assets/mas_ipsp.ico main.py
 ```
+
+## LICENCIA
+
+* [LPG BOLIVIA versión 1](LICENSE.txt)
+* [GPL versión 3.0](LICENSE)
