@@ -154,17 +154,18 @@ def select_excel_input_file():
 def fill_pdf_template(data):
     data_dict = fillpdfs.get_form_fields(Path(pdf_form_path.get()))
     for i in [1, 2]:
-        data_dict['number{}'.format(i)] = f'{int(data[0]):07}'
-        data_dict['date_issue{}'.format(i)] = data[1]
-        data_dict['date_deposit{}'.format(i)] = data[2]
-        data_dict['name{}'.format(i)] = data[3]
-        data_dict['ci{}'.format(i)] = data[4]
-        data_dict['cel{}'.format(i)] = int(data[5])
+        data_dict['number{}'.format(i)] = f'{int(data[0]):05}'
+        data_dict['date_issue{}'.format(i)] = data[1].strftime('%d/%m/%Y')
+        data_dict['date_deposit{}'.format(i)] = data[2].strftime('%d/%m/%Y')
+        data_dict['name{}'.format(i)] = data[3].upper()
+        data_dict['ci{}'.format(i)] = str(data[4]).upper()
+        data_dict['cel{}'.format(i)] = data[5]
         data_dict['militant{}'.format(i)] = 'SI' if data[6] == 'SI' else 'Off'
         data_dict['monthly{}'.format(i)] = 'SI' if data[7] == 'SI' else 'Off'
         data_dict['education{}'.format(i)] = 'SI' if data[8] == 'SI' else 'Off'
-        data_dict['money_float{}'.format(i)] = data[9]
-        data_dict['money_literal{}'.format(i)] = '{0}{1}/100 BOLIVIANOS'.format(num2words(data_dict['money_float{}'.format(i)], lang='es', to='currency').split('euros')[0].upper(), f'{int(round(float(data[9])%1, 2)*100):02}')
+        data_dict['money_float{}'.format(i)] = format(data[9], '.2f')
+        data_dict['money_literal{}'.format(i)] = '{0}{1}/100 BOLIVIANOS'.format(num2words(int(data[9])*100, lang='es', to='currency').split('euros')[0].split('euro')[0].upper(), f'{int(round(float(data[9])%1, 2)*100):02}')
+        data_dict['month{}'.format(i)] = str(data[10]).upper() + ' DE ' + str(data[11]).upper()
         data_dict['signer_name{}'.format(i)] = config['SIGNER']['name'].upper()
         data_dict['signer_charge{}'.format(i)] = config['SIGNER']['charge'].upper()
         out_file = path_join(Path(config['OUTPUT']['path']), '{}_{}.pdf'.format(data_dict['number1'], data_dict['name1'].replace(' ', '_')))
@@ -197,7 +198,7 @@ def generate_pdfs():
             message='El valor de la selección de filas debe ser un número de entre las filas de la Hoja de Excel.'
         )
         return None
-    if row_to < 2 or row_from < 2 or row_to > 1048576 or row_from > 1048576 or type(row_to) is not int or type(row_from) is not int:
+    if row_to < 2 or row_from < 2 or row_to > 100000 or row_from > 100000 or type(row_to) is not int or type(row_from) is not int:
         showerror(
             title='Error en la selección de filas',
             message='El valor de la selección de filas debe estar entre 2 y 1048576.'
@@ -224,7 +225,7 @@ def generate_pdfs():
     entry_row_from['state'] = 'disabled'
     entry_row_to['state'] = 'disabled'
     button_run['state'] = 'disabled'
-    for row in tab1.ws.iter_rows(min_row=row_from, max_col=10, max_row=row_to, values_only=True):
+    for row in tab1.ws.iter_rows(min_row=row_from, max_col=12, max_row=row_to, values_only=True):
         tab1.progress_current.set(tab1.progress_current.get() + 1)
         tab1.progress.set('{0}/{1}'.format(tab1.progress_current.get(), tab1.progress_total.get()))
         escape = False
