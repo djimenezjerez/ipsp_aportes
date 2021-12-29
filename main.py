@@ -165,7 +165,7 @@ def fill_pdf_template(data):
         data_dict['education{}'.format(i)] = 'SI' if data[8] == 'SI' else 'Off'
         data_dict['money_float{}'.format(i)] = format(data[9], '.2f')
         data_dict['money_literal{}'.format(i)] = '{0}{1}/100 BOLIVIANOS'.format(num2words(int(data[9])*100, lang='es', to='currency').split('euros')[0].split('euro')[0].upper(), f'{int(round(float(data[9])%1, 2)*100):02}')
-        data_dict['month{}'.format(i)] = str(data[10]).upper() + ' DE ' + str(data[11]).upper()
+        data_dict['month{}'.format(i)] = str(data[10]).upper() + ' DE ' + str(int(data[11])).upper()
         data_dict['signer_name{}'.format(i)] = config['SIGNER']['name'].upper()
         data_dict['signer_charge{}'.format(i)] = config['SIGNER']['charge'].upper()
         out_file = path_join(Path(config['OUTPUT']['path']), '{}_{}.pdf'.format(data_dict['number1'], data_dict['name1'].replace(' ', '_')))
