@@ -15,6 +15,7 @@ from shutil import copy as copy_file
 from openpyxl import load_workbook
 from fillpdf import fillpdfs
 from num2words import num2words
+from math import trunc
 import os
 import base64
 
@@ -153,25 +154,59 @@ def select_excel_input_file():
 
 def fill_pdf_template(data):
     data_dict = fillpdfs.get_form_fields(Path(pdf_form_path.get()))
+    fill = {
+        'number': f'{int(data[0]):05}',
+        'title': str(data[1]).upper(),
+        'attachment': '4' if str(data[1]).upper() == 'EFECTIVO' else '5',
+        'date_issue': data[2].strftime('%d/%m/%Y'),
+        'date_deposit': data[3].strftime('%d/%m/%Y'),
+        'money_float': format(data[4], '.2f'),
+        'money_literal': '{0}{1}/100 BOLIVIANOS'.format(num2words(int(data[4])*100, lang='es', to='currency').split('euros')[0].split('euro')[0].upper(), f'{int(round(float(data[4])%1, 2)*100):02}'),
+        'month_year': str(data[5]).upper() + ' DE ' + str(int(data[6])).upper(),
+        'name': str(data[7]).upper(),
+        'ci': trunc(int(data[8])) if isinstance(data[8], float) else str(data[8]).upper(),
+        'tel': trunc(int(data[9])) if isinstance(data[9], float) else str(data[9]).upper(),
+        'check_militant': 'Off' if str(data[10]) == 'NO' or str(data[10]) == '' else 'SI',
+        'check_monthly': 'Off' if str(data[11]) == 'NO' or str(data[11]) == '' else 'SI',
+        'check_extraordinary': 'Off' if str(data[12]) == 'NO' or str(data[12]) == '' else 'SI',
+        'check_generals': 'Off' if str(data[13]) == 'NO' or str(data[13]) == '' else 'SI',
+        'check_municipal': 'Off' if str(data[14]) == 'NO' or str(data[14]) == '' else 'SI',
+        'check_government': 'Off' if str(data[15]) == 'NO' or str(data[15]) == '' else 'SI',
+        'check_education': 'Off' if str(data[16]) == 'NO' or str(data[16]) == '' else 'SI',
+        'check_administrative': 'Off' if str(data[17]) == 'NO' or str(data[17]) == '' else 'SI',
+        'check_others': 'Off' if str(data[18]) == 'NO' or str(data[18]) == '' else 'SI'
+    }
     for i in [1, 2]:
-        data_dict['number{}'.format(i)] = f'{int(data[0]):05}'
-        data_dict['date_issue{}'.format(i)] = data[1].strftime('%d/%m/%Y')
-        data_dict['date_deposit{}'.format(i)] = data[2].strftime('%d/%m/%Y')
-        data_dict['name{}'.format(i)] = data[3].upper()
-        data_dict['ci{}'.format(i)] = str(data[4]).upper()
-        data_dict['cel{}'.format(i)] = data[5]
-        data_dict['militant{}'.format(i)] = 'SI' if data[6] == 'SI' else 'Off'
-        data_dict['monthly{}'.format(i)] = 'SI' if data[7] == 'SI' else 'Off'
-        data_dict['education{}'.format(i)] = 'SI' if data[8] == 'SI' else 'Off'
-        data_dict['money_float{}'.format(i)] = format(data[9], '.2f')
-        data_dict['money_literal{}'.format(i)] = '{0}{1}/100 BOLIVIANOS'.format(num2words(int(data[9])*100, lang='es', to='currency').split('euros')[0].split('euro')[0].upper(), f'{int(round(float(data[9])%1, 2)*100):02}')
-        data_dict['month{}'.format(i)] = str(data[10]).upper() + ' DE ' + str(int(data[11])).upper()
-        data_dict['signer_name{}'.format(i)] = config['SIGNER']['name'].upper()
-        data_dict['signer_charge{}'.format(i)] = config['SIGNER']['charge'].upper()
-        out_file = path_join(Path(config['OUTPUT']['path']), '{}_{}.pdf'.format(data_dict['number1'], data_dict['name1'].replace(' ', '_')))
+        data_dict['number{}'.format(i)] = fill['number']
+        data_dict['title{}'.format(i)] = fill['title']
+        data_dict['attachment{}'.format(i)] = fill['attachment']
+        data_dict['date_issue{}'.format(i)] = fill['date_issue']
+        data_dict['date_deposit{}'.format(i)] = fill['date_deposit']
+        data_dict['money_float{}'.format(i)] = fill['money_float']
+        data_dict['money_literal{}'.format(i)] = fill['money_literal']
+        data_dict['month_year{}'.format(i)] = fill['month_year']
+        data_dict['name{}'.format(i)] = fill['name']
+        data_dict['ci{}'.format(i)] = fill['ci']
+        data_dict['tel{}'.format(i)] = fill['tel']
+        data_dict['check_militant{}'.format(i)] = fill['check_militant']
+        data_dict['check_monthly{}'.format(i)] = fill['check_monthly']
+        data_dict['check_extraordinary{}'.format(i)] = fill['check_extraordinary']
+        data_dict['check_generals{}'.format(i)] = fill['check_generals']
+        data_dict['check_municipals{}'.format(i)] = fill['check_municipal']
+        data_dict['check_government{}'.format(i)] = fill['check_government']
+        data_dict['check_education{}'.format(i)] = fill['check_education']
+        data_dict['check_administrative{}'.format(i)] = fill['check_administrative']
+        data_dict['check_others{}'.format(i)] = fill['check_others']
+        data_dict['issuer_name{}'.format(i)] = config['SIGNER']['name'].upper()
+        data_dict['issuer_charge{}'.format(i)] = config['SIGNER']['charge'].upper()
+    out_file = path_join(Path(config['OUTPUT']['path']), '{}_{}.pdf'.format(fill['number'], fill['name'].replace(' ', '_')))
+    try:
         if os.path.exists(out_file):
             os.remove(out_file)
         fillpdfs.write_fillable_pdf(Path(pdf_form_path.get()), out_file, data_dict, flatten=False)
+        return True
+    except:
+        return False
 
 def generate_pdfs():
     if not file_exists(config['FORM']['path']):
@@ -225,7 +260,7 @@ def generate_pdfs():
     entry_row_from['state'] = 'disabled'
     entry_row_to['state'] = 'disabled'
     button_run['state'] = 'disabled'
-    for row in tab1.ws.iter_rows(min_row=row_from, max_col=12, max_row=row_to, values_only=True):
+    for row in tab1.ws.iter_rows(min_row=row_from, max_col=19, max_row=row_to, values_only=True):
         tab1.progress_current.set(tab1.progress_current.get() + 1)
         tab1.progress.set('{0}/{1}'.format(tab1.progress_current.get(), tab1.progress_total.get()))
         escape = False
@@ -236,8 +271,15 @@ def generate_pdfs():
         if escape:
             continue
         else:
-            fill_pdf_template(row)
-            tab1.progress_success.set(tab1.progress_success.get() + 1)
+            result = fill_pdf_template(row)
+            if result:
+                tab1.progress_success.set(tab1.progress_success.get() + 1)
+            else:
+                showerror(
+                    title='Error de almacenamiento',
+                    message='Cierre los archivos PDF de aportes abiertos y vuelva a ejecutar el proceso.'
+                )
+                return None
         tab1.update()
     button_file['state'] = 'normal'
     button_folder['state'] = 'normal'
@@ -246,7 +288,7 @@ def generate_pdfs():
     button_run['state'] = 'normal'
     showinfo(
         title='Formularios generados',
-        message='El proceso ha finalizado satisfactoriamente.'
+        message='El proceso ha finalizado correctamente.'
     )
 
 # Ventana generación de formularios
