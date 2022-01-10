@@ -16,6 +16,7 @@ from openpyxl import load_workbook
 from fillpdf import fillpdfs
 from num2words import num2words
 from math import trunc
+from sys import platform
 import os
 import base64
 
@@ -208,6 +209,22 @@ def fill_pdf_template(data):
     except:
         return False
 
+def set_loading(loading):
+    button_file['state'] = 'normal' if loading else 'disabled'
+    button_folder['state'] = 'normal' if loading else 'disabled'
+    entry_row_from['state'] = 'normal' if loading else 'disabled'
+    entry_row_to['state'] = 'normal' if loading else 'disabled'
+    button_run['state'] = 'normal' if loading else 'disabled'
+
+def open_folder(folder):
+    try:
+        if platform.startswith('win32'):
+            os.system('start '+r'{}'.format(folder))
+        elif platform.startswith('linux'):
+            os.system('xdg-open "{}"'.format(folder))
+    except:
+        return None
+
 def generate_pdfs():
     if not file_exists(config['FORM']['path']):
         pdf_form_path.set(file_empty_message)
@@ -255,11 +272,7 @@ def generate_pdfs():
     tab1.progress_success.set(0)
     tab1.progress_current.set(0)
     tab1.progress_total.set(row_to - row_from + 1)
-    button_file['state'] = 'disabled'
-    button_folder['state'] = 'disabled'
-    entry_row_from['state'] = 'disabled'
-    entry_row_to['state'] = 'disabled'
-    button_run['state'] = 'disabled'
+    set_loading(False)
     for row in tab1.ws.iter_rows(min_row=row_from, max_col=19, max_row=row_to, values_only=True):
         tab1.progress_current.set(tab1.progress_current.get() + 1)
         tab1.progress.set('{0}/{1}'.format(tab1.progress_current.get(), tab1.progress_total.get()))
@@ -279,17 +292,17 @@ def generate_pdfs():
                     title='Error de almacenamiento',
                     message='Cierre los archivos PDF de aportes abiertos y vuelva a ejecutar el proceso.'
                 )
+                set_loading(True)
+                tab1.update()
                 return None
         tab1.update()
-    button_file['state'] = 'normal'
-    button_folder['state'] = 'normal'
-    entry_row_from['state'] = 'normal'
-    entry_row_to['state'] = 'normal'
-    button_run['state'] = 'normal'
+    set_loading(True)
     showinfo(
         title='Formularios generados',
         message='El proceso ha finalizado correctamente.'
     )
+    if tab1.progress_success.get() > 1:
+        open_folder(config['OUTPUT']['PATH'])
 
 # Ventana generación de formularios
 
