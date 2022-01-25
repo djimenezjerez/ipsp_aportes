@@ -9,16 +9,28 @@ import configparser
 from os.path import exists as path_exists
 from os.path import isfile as file_exists
 from tkinter import filedialog as fd
-from tkinter.messagebox import showerror, showinfo
+from tkinter import Canvas
+from tkinter.messagebox import showerror, showinfo, showwarning
 from shutil import move as move_file
 from shutil import copy as copy_file
+from numpy import imag
 from openpyxl import load_workbook
 from fillpdf import fillpdfs
 from num2words import num2words
 from math import trunc
 from sys import platform
 import os
-import base64
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium import webdriver
+from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.support.select import Select
+from selenium.webdriver.common.action_chains import ActionChains
+from datetime import datetime
+import pandas as pd
+import time
 
 def empty_validation(input):
     if not input or input == '' or input == None:
@@ -32,6 +44,15 @@ def empty_message_error():
         message='Los campos no pueden estar vacíos.'
     )
 
+# UNINET
+url = 'https://uninetplus.bancounion.com.bo/Uninetplus/Account/Login'
+options = Options()
+options.set_preference('profile', os.path.join(os.getcwd(), 'times.json'))
+options.set_preference('intl.accept_languages', 'en-US, en')
+options.set_preference('dom.push.enabled', False)
+options.set_preference('dom.webnotifications.enabled', False)
+
+# APP
 app_name = 'IPSPAportes'
 author_name = 'Daniel_Jimenez'
 file_config_name = 'ipsp_aportes.ini'
@@ -50,6 +71,8 @@ if not config.has_section('INPUT'):
     config.add_section('INPUT')
 if not config.has_section('SIGNER'):
     config.add_section('SIGNER')
+if not config.has_section('UNINET'):
+    config.add_section('UNINET')
 
 root = tk.Tk()
 s = ttk.Style(root)
@@ -71,26 +94,42 @@ tab1.pack(fill=tk.BOTH, expand=True)
 tab2 = ttk.Frame(notebook)
 tab2.pack(fill=tk.BOTH, expand=True)
 
+tab3 = ttk.Frame(notebook)
+tab3.pack(fill=tk.BOTH, expand=True)
+
 img1 = tk.PhotoImage(data='iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAABv1BMVEUAAABGRkEqKiciIiAkJCJISEMODg4LCwtISEQFBQUCAgIDAwMDAwMDAwMDAwMDAwIDAwMCAgICAgIgIB4DAwMDAwMODg0DAwMLCwoPDw4ICAgCAgIBAQEBAQEHBwYDAwMEBAQSEhEBAQEBAQEHBwYMDAsEBAQEBAQEBAQGBgUQEBACAgEBAQECAgIICAcJCQkCAgICAgEFBQUGBgUGBgUHBwYFBQUBAQECAgEDAwNbW1UEBAMCAgIBAQEBAQEBAQEGBgYGBgYGBgYJCQgCAgICAgIKCgl4eHEDAwMCAgICAgICAgICAgIFBQQFBQUDAwMBAQFAQD1HR0NEREAEBAQVFRQNDQwQEA8SEhEYGBcJCQkBAQEDAwNVVVBEREAEBAMEBAQDAwMDAwMCAgIDAwM1NTINDQ0ODg0BAQEBAQEEBAQ2NjICAgIDAwMDAwMQEA8qKig3NzMdHRsJCQg2NjMEBAMEBAQDAwMEBAQiIiBhYVsCAgIDAwICAgIDAwJpaWNKSkVUVE+KioL///8KCgoCAgJTU08CAgIDAwMDAwMDAwMiIiFYWFMPDw8GBgYGBgUGBgUICAhLS0hKSkb///8SAPvFAAAAlHRSTlMAAwYHBgMMFQMtb2RiYWVrVY+ZB0ZRE2AZEh+B8b0jRUQMxtwcFjw9Pi8QsuiCHhykszEtLiQvybBLAkym5NjLKi0pFKCSFwJOhKOdmDkyXPYDAwRGDRURDwoQ4EwDA0k/VF+MXgUUFLfTNAWvTWMQBgUJHgVKQFZCCANwaZdnAwQDAgEZcwN5WFpZBQMNKCorGgIDCz5HMwAAAAFiS0dEg/y0z9IAAAAHdElNRQflDAwBKxxmyLk5AAAA8klEQVQY02NgZGKGARZWNnYOBk4ubh5ebj4g4OYXEBQSZhARFRMQlxCTBAIpaRlZOQZ5BUUlZRVVNXUNTS1tHV09oIC+gaGRpLGxiamZuYWlFYO8tY2tnb2Do6aTs4urpZs7g7yHp5e3j4mvmp9/gHRgUDCDfEhoWJhYeERklGx0TGxwHIN8fIJAYmKigEZSQHJKKkggJDQtPT1dTDIjM4s3G65CIFEtJ9ctLxuqIi2/oDDcsaiYuwQkUFpWXl5RWSVWXVNbVw8SUGBoaGhsam5p5eEObwMKJLR3dAJBF59PRXdPMFCgt68fDCZMnDQ5DggAHkREcJfzK3gAAAAldEVYdGRhdGU6Y3JlYXRlADIwMjEtMTItMTJUMDE6NDM6MjUrMDA6MDCcBOh7AAAAJXRFWHRkYXRlOm1vZGlmeQAyMDIxLTEyLTEyVDAxOjQzOjI1KzAwOjAw7VlQxwAAACB0RVh0c29mdHdhcmUAaHR0cHM6Ly9pbWFnZW1hZ2ljay5vcme8zx2dAAAAGHRFWHRUaHVtYjo6RG9jdW1lbnQ6OlBhZ2VzADGn/7svAAAAGHRFWHRUaHVtYjo6SW1hZ2U6OkhlaWdodAAxOTJAXXFVAAAAF3RFWHRUaHVtYjo6SW1hZ2U6OldpZHRoADE5MtOsIQgAAAAZdEVYdFRodW1iOjpNaW1ldHlwZQBpbWFnZS9wbmc/slZOAAAAF3RFWHRUaHVtYjo6TVRpbWUAMTYzOTI3MzQwNYMms/UAAAAPdEVYdFRodW1iOjpTaXplADBCQpSiPuwAAABWdEVYdFRodW1iOjpVUkkAZmlsZTovLy9tbnRsb2cvZmF2aWNvbnMvMjAyMS0xMi0xMi8wODEyMTA5YmFjYzExYjAwMGRlM2ZmNWQ5NzUwNjhkNy5pY28ucG5ncXv8dQAAAABJRU5ErkJggg==')
 notebook.add(tab1, text='Generación de Formularios', image=img1, compound='left')
 
-img2 = tk.PhotoImage(data='iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAAAmJLR0QA/4ePzL8AAAAJcEhZcwAAEHMAABBzARg5fEAAAAAHdElNRQflDAwBKwabqkBDAAABMElEQVQoz33Rv0vUARzG8dfd9zhNJQK/XYg/sLZcTq0hp7DJRfwD3LIil6KmaHFwjRoTJ1enliKhRsE4wQZFDkFFMI8MakjIQb+fhsu7IfG9Ps/z4fnwJJpc0a/VkfAfeYl2C75ZcwuFppTgspcm3XBfSZeiQQ9s+940zTgRToUQMpmw7FpdLMi5KgFVValhbUi1nuXbPJcJC/okOjz0U/isV65u+OiXsOV6o9WcsOaZewYgE8IHxUanR2oeW7FtXDGvJpDqaBh6VZXcsenAPEPeCsee/Pv+tlUvLAlHajYLvtpHi1lDKrqNee+msswlfyzm5M2bapz/7Y1+nQ6NeOWLnUTYMuBYRZ/wWo+yDcOeeueHk3ou1aOkYte0PUvWjTqHQRPKPll21wWkZyvU+Qt4YldxF3VvXAAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyMS0xMi0xMlQwMTo0Mjo1MiswMDowMLyktNIAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjEtMTItMTJUMDE6NDI6NTIrMDA6MDDN+QxuAAAAIHRFWHRzb2Z0d2FyZQBodHRwczovL2ltYWdlbWFnaWNrLm9yZ7zPHZ0AAAAYdEVYdFRodW1iOjpEb2N1bWVudDo6UGFnZXMAMaf/uy8AAAAYdEVYdFRodW1iOjpJbWFnZTo6SGVpZ2h0ADE5MkBdcVUAAAAXdEVYdFRodW1iOjpJbWFnZTo6V2lkdGgAMTky06whCAAAABl0RVh0VGh1bWI6Ok1pbWV0eXBlAGltYWdlL3BuZz+yVk4AAAAXdEVYdFRodW1iOjpNVGltZQAxNjM5MjczMzcyV0ymFAAAAA90RVh0VGh1bWI6OlNpemUAMEJClKI+7AAAAFZ0RVh0VGh1bWI6OlVSSQBmaWxlOi8vL21udGxvZy9mYXZpY29ucy8yMDIxLTEyLTEyLzNjOTliMDYxNmI0OWFkMmNkODUyNjNmMTEyNTA5NmM1Lmljby5wbmcNsPFfAAAAAElFTkSuQmCC')
-notebook.add(tab2, text='Configuración', image=img2, compound='left')
+img2 = tk.PhotoImage(data='iVBORw0KGgoAAAANSUhEUgAAABEAAAAOCAMAAAD+MweGAAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAABU1BMVEUAAABEREBcXFUoKCgkJCQqKiokJCQpKSlZWVJEREBWVlDh4cooKCcjIyMhISE7Ozs7OzshISEjIyMpKSj+/uRKSkUoKCcjIyMjIyMjIyMiIiIwMDBtbW0jIyMjIyMjIyNISEMzMzEkJCMjIyMjIyMjIyMjIyMiIiIdHR0jIyMkJCNNTUgsLCsjIyMjIyMjIyMjIyNMTEdLS0YjIyMjIyMmJiUjIyMjIyMjIyMjIyMjIyMjIyMqKikrKyojIyMjIyMlJSUjIyMjIyMjIyMjIyMjIyMjIyMpKShPT0lLS0cjIyMjIyMjIyMjIyMlJSUjIyMjIyMjIyMpKShOTkkjIyMjIyNPT0pFRUFAQD0jIyMjIyMlJSUjIyMjIyMjIyMjIyMjIyMjIyMnJydBQT4jIyMjIyMjIyMsLCtCQj4jIyMjIyNDQz8/PzwjIyNBQT6enp7////oyIiYAAAAb3RSTlMAAwIRXaJVDwIEAwEVXLv187ZYFAEDFmLA9Pz5+PO9YAMIToGGhIOCg4JNAw1rkI+RAwOnuCKqtK+ws60QD8reKc7Z09TY0BMDA8jby9co0dLWEgPa1QMDBJajKpigm5yfmhgEdZKODARbWgQDzwPwxnlgAAAAAWJLR0Rw2ABsdAAAAAd0SU1FB+YBFwAgIryDce8AAADVSURBVAjXY2AEAiYGZhZWNnYGDhCHgZGTi5uHl48/X0BQSFiEixMoIiomLiEpJS0jLSUrJ88jysigoKikrKKqpq6hrqmqoqylqMCgraOrp6esD0T6yvoGujqGDIxGOsYmpmbmphaWplbWNtpAcwxt7ewdHJ0cnF0cXN3cPYAinrZe3g4+vn7+AX6BjkHBWEUMbX2AukIcnEP9XP2DwhgZwiPEIqOiY2Id4uIdEhKTksMZgnVSUg3S9IBIL80gNSU9mCEjMyEWARKyshlyVJ1zEcBZLQ8ANPkzm26T+okAAAAldEVYdGRhdGU6Y3JlYXRlADIwMjItMDEtMjNUMDA6MzI6MjYrMDA6MDC0OI9kAAAAJXRFWHRkYXRlOm1vZGlmeQAyMDIyLTAxLTIzVDAwOjMyOjI2KzAwOjAwxWU32AAAAABJRU5ErkJggg==')
+notebook.add(tab2, text='Búsqueda UNINET', image=img2, compound='left')
+
+img3 = tk.PhotoImage(data='iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAAAmJLR0QA/4ePzL8AAAAJcEhZcwAAEHMAABBzARg5fEAAAAAHdElNRQflDAwBKwabqkBDAAABMElEQVQoz33Rv0vUARzG8dfd9zhNJQK/XYg/sLZcTq0hp7DJRfwD3LIil6KmaHFwjRoTJ1enliKhRsE4wQZFDkFFMI8MakjIQb+fhsu7IfG9Ps/z4fnwJJpc0a/VkfAfeYl2C75ZcwuFppTgspcm3XBfSZeiQQ9s+940zTgRToUQMpmw7FpdLMi5KgFVValhbUi1nuXbPJcJC/okOjz0U/isV65u+OiXsOV6o9WcsOaZewYgE8IHxUanR2oeW7FtXDGvJpDqaBh6VZXcsenAPEPeCsee/Pv+tlUvLAlHajYLvtpHi1lDKrqNee+msswlfyzm5M2bapz/7Y1+nQ6NeOWLnUTYMuBYRZ/wWo+yDcOeeueHk3ou1aOkYte0PUvWjTqHQRPKPll21wWkZyvU+Qt4YldxF3VvXAAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyMS0xMi0xMlQwMTo0Mjo1MiswMDowMLyktNIAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjEtMTItMTJUMDE6NDI6NTIrMDA6MDDN+QxuAAAAIHRFWHRzb2Z0d2FyZQBodHRwczovL2ltYWdlbWFnaWNrLm9yZ7zPHZ0AAAAYdEVYdFRodW1iOjpEb2N1bWVudDo6UGFnZXMAMaf/uy8AAAAYdEVYdFRodW1iOjpJbWFnZTo6SGVpZ2h0ADE5MkBdcVUAAAAXdEVYdFRodW1iOjpJbWFnZTo6V2lkdGgAMTky06whCAAAABl0RVh0VGh1bWI6Ok1pbWV0eXBlAGltYWdlL3BuZz+yVk4AAAAXdEVYdFRodW1iOjpNVGltZQAxNjM5MjczMzcyV0ymFAAAAA90RVh0VGh1bWI6OlNpemUAMEJClKI+7AAAAFZ0RVh0VGh1bWI6OlVSSQBmaWxlOi8vL21udGxvZy9mYXZpY29ucy8yMDIxLTEyLTEyLzNjOTliMDYxNmI0OWFkMmNkODUyNjNmMTEyNTA5NmM1Lmljby5wbmcNsPFfAAAAAElFTkSuQmCC')
+notebook.add(tab3, text='Configuración', image=img3, compound='left')
 
 tab1.wb = None
 tab1.ws = None
 
+tab2.wb = None
+tab2.ws = None
+
 input_sheet = tk.StringVar(tab1, '')
 
-def load_excel_data():
+def load_excel_data(tab):
     if config.has_option('INPUT', 'path'):
         if config['INPUT']['path'] != file_empty_message:
             if file_exists(config['INPUT']['path']):
-                tab1.wb = load_workbook(config['INPUT']['path'])
-                if len(tab1.wb.sheetnames) > 0:
-                    input_sheet.set(tab1.wb.sheetnames[0])
-                    tab1.ws = tab1.wb[tab1.wb.sheetnames[0]]
-                    return True
+                if tab == 1:
+                    tab1.wb = load_workbook(config['INPUT']['path'])
+                    if len(tab1.wb.sheetnames) > 0:
+                        input_sheet.set(tab1.wb.sheetnames[0])
+                        tab1.ws = tab1.wb[tab1.wb.sheetnames[0]]
+                        return True
+                else:
+                    tab2.wb = load_workbook(config['INPUT']['path'])
+                    if len(tab2.wb.sheetnames) > 0:
+                        input_sheet.set(tab2.wb.sheetnames[0])
+                        tab2.ws = tab2.wb[tab2.wb.sheetnames[0]]
+                        return True
     return False
 
 pdf_form_path = tk.StringVar(root, config['FORM']['path'] if config.has_option('FORM', 'path') else file_empty_message)
@@ -103,6 +142,10 @@ tab1.progress_total = tk.IntVar(tab1, 0)
 tab1.progress_current = tk.IntVar(tab1, 0)
 tab1.progress_success = tk.IntVar(tab1, 0)
 tab1.progress = tk.StringVar(tab1, '0/0')
+
+tab2.row_to = tk.IntVar(tab1, 2)
+tab2.row_from = tk.IntVar(tab1, 2)
+tab2.driver = None
 
 def select_file(file_types, config_section):
     filename = fd.askopenfilename(
@@ -153,29 +196,80 @@ def select_excel_input_file():
         tab1.progress.set('0/0')
         tab1.progress_success.set(0)
 
+def checkbox(data):
+    return 'Off' if str(data) == 'NO' or str(data) == '' or data == None else 'SI'
+
 def fill_pdf_template(data):
     data_dict = fillpdfs.get_form_fields(Path(pdf_form_path.get()))
+    number = data[0]
+    try:
+        number = f'{int(number):05}'
+    except:
+        number = number if number != None else ''
+    title = data[1] if data[1] != None else 'EFECTIVO'
+    try:
+        title = str(title).upper()
+    except:
+        title = 'EFECTIVO'
+    deposit = data[4]
+    if isinstance(deposit, str):
+        deposit = deposit.strip()
+    try:
+        deposit = int(deposit)
+    except:
+        deposit = deposit if deposit != None else ''
+    date_issue = data[2]
+    try:
+        date_issue = date_issue.strftime('%d/%m/%Y')
+    except:
+        date_issue = date_issue if date_issue != None else ''
+    date_deposit = data[3]
+    try:
+        date_deposit = date_deposit.strftime('%d/%m/%Y')
+    except:
+        date_deposit = date_deposit if date_deposit != None else ''
+    money_float = data[5]
+    try:
+        money_float = format(data[5], '.2f')
+    except:
+        money_float = money_float if money_float != None else ''
+    money_literal = data[5]
+    try:
+        money_literal = '{0}{1}/100 BOLIVIANOS'.format(num2words(int(data[5])*100, lang='es', to='currency').split('euros')[0].split('euro')[0].upper(), f'{int(round(float(data[5])%1, 2)*100):02}')
+    except:
+        money_literal = money_literal if money_literal != None else ''
+    try:
+        month_year = str(data[6] if data[6] != None else '').upper()
+        if data[7] != None and data[7] != '':
+            month_year = month_year + ' DE '
+            try:
+                month_year = month_year + str(int(data[7])).upper()
+            except:
+                month_year = month_year + data[7]
+    except:
+        month_year = data[6] + ' DE ' + data[7]
     fill = {
-        'number': f'{int(data[0]):05}',
-        'title': str(data[1]).upper(),
-        'attachment': '4' if str(data[1]).upper() == 'EFECTIVO' else '5',
-        'date_issue': data[2].strftime('%d/%m/%Y'),
-        'date_deposit': data[3].strftime('%d/%m/%Y'),
-        'money_float': format(data[4], '.2f'),
-        'money_literal': '{0}{1}/100 BOLIVIANOS'.format(num2words(int(data[4])*100, lang='es', to='currency').split('euros')[0].split('euro')[0].upper(), f'{int(round(float(data[4])%1, 2)*100):02}'),
-        'month_year': str(data[5]).upper() + ' DE ' + str(int(data[6])).upper(),
-        'name': str(data[7]).upper(),
-        'ci': trunc(int(data[8])) if isinstance(data[8], float) else str(data[8]).upper(),
-        'tel': trunc(int(data[9])) if isinstance(data[9], float) else str(data[9]).upper(),
-        'check_militant': 'Off' if str(data[10]) == 'NO' or str(data[10]) == '' else 'SI',
-        'check_monthly': 'Off' if str(data[11]) == 'NO' or str(data[11]) == '' else 'SI',
-        'check_extraordinary': 'Off' if str(data[12]) == 'NO' or str(data[12]) == '' else 'SI',
-        'check_generals': 'Off' if str(data[13]) == 'NO' or str(data[13]) == '' else 'SI',
-        'check_municipal': 'Off' if str(data[14]) == 'NO' or str(data[14]) == '' else 'SI',
-        'check_government': 'Off' if str(data[15]) == 'NO' or str(data[15]) == '' else 'SI',
-        'check_education': 'Off' if str(data[16]) == 'NO' or str(data[16]) == '' else 'SI',
-        'check_administrative': 'Off' if str(data[17]) == 'NO' or str(data[17]) == '' else 'SI',
-        'check_others': 'Off' if str(data[18]) == 'NO' or str(data[18]) == '' else 'SI'
+        'number': number,
+        'title': title,
+        'attachment': '4' if title == 'EFECTIVO' else '5',
+        'date_issue': date_issue,
+        'date_deposit': date_deposit,
+        'deposit': deposit,
+        'money_float': money_float,
+        'money_literal': money_literal,
+        'month_year': month_year,
+        'name': str(data[8] if data[8] != None else '').upper(),
+        'ci': (trunc(int(data[9])) if isinstance(data[9], float) else str(data[9]).upper()) if data[9] != None else '',
+        'tel': (trunc(int(data[10])) if isinstance(data[10], float) else str(data[10]).upper()) if data[10] != None else '',
+        'check_militant': checkbox(data[11]),
+        'check_monthly': checkbox(data[12]),
+        'check_extraordinary': checkbox(data[13]),
+        'check_generals': checkbox(data[14]),
+        'check_municipal': checkbox(data[15]),
+        'check_government': checkbox(data[16]),
+        'check_education': checkbox(data[17]),
+        'check_administrative': checkbox(data[18]),
+        'check_others': checkbox(data[19])
     }
     for i in [1, 2]:
         data_dict['number{}'.format(i)] = fill['number']
@@ -214,7 +308,11 @@ def set_loading(loading):
     button_folder['state'] = 'normal' if loading else 'disabled'
     entry_row_from['state'] = 'normal' if loading else 'disabled'
     entry_row_to['state'] = 'normal' if loading else 'disabled'
+    uninet_row_from['state'] = 'normal' if loading else 'disabled'
+    uninet_row_to['state'] = 'normal' if loading else 'disabled'
     button_run['state'] = 'normal' if loading else 'disabled'
+    button_file_uninet['state'] = 'normal' if loading else 'disabled'
+    button_navigator['state'] = 'normal' if loading else 'disabled'
 
 def open_folder(folder):
     try:
@@ -262,7 +360,7 @@ def generate_pdfs():
             message='El valor Hasta fila debe ser mayor o igual que el valor Desde fila.'
         )
         return None
-    if not load_excel_data():
+    if not load_excel_data(1):
         excel_input_path.set(file_empty_message)
         showerror(
             title='Error al cargar la hoja de cálculo Excel',
@@ -273,13 +371,13 @@ def generate_pdfs():
     tab1.progress_current.set(0)
     tab1.progress_total.set(row_to - row_from + 1)
     set_loading(False)
-    for row in tab1.ws.iter_rows(min_row=row_from, max_col=19, max_row=row_to, values_only=True):
+    for row in tab1.ws.iter_rows(min_row=row_from, max_col=20, max_row=row_to, values_only=True):
         tab1.progress_current.set(tab1.progress_current.get() + 1)
         tab1.progress.set('{0}/{1}'.format(tab1.progress_current.get(), tab1.progress_total.get()))
-        escape = False
+        escape = True
         for cell in row:
-            if not cell or cell == '' or cell == None:
-                escape = True
+            if cell != None and cell != '':
+                escape = False
                 break
         if escape:
             continue
@@ -335,33 +433,308 @@ ttk.Label(tab1, text='', font=('Arial', '12', 'normal'), anchor='w', textvariabl
 button_run = ttk.Button(tab1, text='Generar formularios', style='custom_button.TButton', command=generate_pdfs)
 button_run.grid(sticky='E', column=3, row=6, padx=10, pady=20)
 
+# Ventana UNINET
+
+ttk.Label(tab2, text='Hoja de cálculo Excel de aportantes', font=('Arial', '14', 'bold underline')).grid(sticky='W', column=0, row=0, padx=10, pady=10, columnspan=4)
+
+ttk.Label(tab2, text='Archivo Excel:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=0, row=1, padx=10, pady=5)
+ttk.Label(tab2, text='', font=('Arial', '12', 'normal'), anchor='w', textvariable=excel_input_path, wraplength=340).grid(sticky='WE', column=1, row=1, padx=10, pady=5, columnspan=2)
+button_file_uninet = ttk.Button(tab2, text='Seleccionar archivo', style='custom_button.TButton', command=select_excel_input_file)
+button_file_uninet.grid(sticky='E', column=3, row=1, padx=10, pady=5)
+
+ttk.Label(tab2, text='Desde fila:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=0, row=2, padx=10, pady=5)
+uninet_row_from = ttk.Entry(tab2, font=('Arial', '12', 'normal'), takefocus=0, textvariable=tab2.row_from)
+uninet_row_from.grid(sticky='WE', column=1, row=2, padx=10, pady=5)
+ttk.Label(tab2, text='Hasta fila:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=2, row=2, padx=10, pady=5)
+uninet_row_to = ttk.Entry(tab2, font=('Arial', '12', 'normal'), takefocus=0, textvariable=tab2.row_to)
+uninet_row_to.grid(sticky='WE', column=3, row=2, padx=10, pady=5)
+
+def draw_captcha_image():
+    tab2.driver.get(url)
+    captcha_base64 = tab2.driver.find_element(By.XPATH, '//*[@title="Captcha Code"]').get_attribute('src')
+    cabecera, captcha_base64 = captcha_base64.split(',', 1)
+    captcha_image = tk.PhotoImage(data=captcha_base64)
+    canvas.itemconfigure(image_container, image=captcha_image, state='normal')
+    canvas.update()
+    uninet_captcha_input['state'] = 'normal'
+    button_captcha['state'] = 'normal'
+    raise Exception('Imagen actualizada')
+
+tab2.deposits = []
+accounts_total = 1
+
+def remaining_deposits():
+    return len(list(filter(lambda d: d['success'] == False, tab2.deposits))) > 0
+
+def open_navigator():
+    if config['UNINET']['user'] == None or config['UNINET']['user'] == '' or config['UNINET']['pass'] == None or config['UNINET']['pass'] == '':
+        showerror(
+            title='Credenciales de UNINET incorrectas',
+            message='Configure nuevamente las credenciales de acceso a UNINET.'
+        )
+        notebook.select(2)
+        return None
+    try:
+        os.rename(config['INPUT']['path'], config['INPUT']['path'])
+        tab2.deposits = []
+        load_excel_data(2)
+        for row in (range(tab2.row_from.get(), tab2.row_to.get() + 1)):
+            deposit = tab2.ws.cell(row=row, column=5).value
+            try:
+                deposit = int(deposit)
+            except:
+                deposit = None if deposit == '' else deposit
+            tab2.deposits.append({
+                'number': deposit,
+                'success': True if deposit == None else False
+            })
+    except:
+        showerror(
+            title='Error al abrir archivo Excel',
+            message='Debe cerrar el archivo Excel para poder modificarlo.'
+        )
+        return None
+    if not remaining_deposits():
+        showinfo(
+            title='Datos obtenidos',
+            message='El proceso ha finalizado correctamente.'
+        )
+        return None
+    button_file_uninet['state'] = 'disabled'
+    button_navigator['state'] = 'disabled'
+    uninet_row_from['state'] = 'disabled'
+    uninet_row_to['state'] = 'disabled'
+    service = Service(os.path.join(os.getcwd(), 'geckodriver.exe' if os.name == 'nt' else 'geckodriver'))
+    tab2.driver = webdriver.Firefox(options=options, service=service)
+    draw_captcha_image()
+
+def fill_login():
+    if uninet_captcha_input.get() == None or uninet_captcha_input.get() == '':
+        showwarning(
+            title='Texto captcha faltante',
+            message='Debe llenar el texto captcha de la imagen.'
+        )
+        return None
+    uninet_captcha_input['state'] = 'disabled'
+    button_captcha['state'] = 'disabled'
+    input_user = tab2.driver.find_element(By.ID, 'Usuario')
+    input_user.clear()
+    input_user.send_keys(config['UNINET']['user'])
+    tab2.driver.find_element(By.ID, 'Captcha').send_keys(uninet_captcha_input.get())
+    tab2.driver.find_element(By.XPATH, '//input[@value="Login"]').click()
+    error = tab2.driver.find_elements(By.XPATH, '/html/body/div[2]/section/form/div[3]/div[1]/div[2]/div[7]')
+    if len(error) > 0:
+        if error[0].text == 'The capcha code does not correspond with the image.':
+            uninet_captcha.set('')
+            draw_captcha_image()
+    else:
+        try:
+            WebDriverWait(tab2.driver, 5).until(EC.presence_of_element_located((By.ID, 'VerificaAlias')))
+            tab2.driver.find_element(By.ID, 'VerificaAlias').click()
+        except:
+            print('No se encontró La imágen de verificación')
+        tab2.driver.find_element(By.ID, 'Password').send_keys(config['UNINET']['pass'])
+        tab2.driver.find_element(By.ID, 'btn-login').click()
+        try:
+            WebDriverWait(tab2.driver, 5).until(EC.presence_of_element_located((By.XPATH, '//div[contains(@class, "alert-box error") and text()="The password entered is not valid or your account (user) is inactive. Remember that after three consecutive attempts your account becomes inactive."]')))
+            error = tab2.driver.find_elements(By.XPATH, '//div[contains(@class, "alert-box error") and text()="The password entered is not valid or your account (user) is inactive. Remember that after three consecutive attempts your account becomes inactive."]')
+            if len(error) > 0:
+                tab2.driver.quit()
+                uninet_captcha.set('')
+                config.set('UNINET', 'pass', '')
+                save_config(False)
+                uninet_pass.set('')
+                showerror(
+                    title='Credenciales de UNINET incorrectas',
+                    message='Configure nuevamente las credenciales de acceso a UNINET.'
+                )
+                notebook.select(2)
+                button_file_uninet['state'] = 'normal'
+                button_navigator['state'] = 'normal'
+                uninet_row_from['state'] = 'normal'
+                uninet_row_to['state'] = 'normal'
+                uninet_captcha_input['state'] = 'disabled'
+                button_captcha['state'] = 'disabled'
+                return None
+        except:
+            pass
+        try:
+            WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.CLASS_NAME, 'modal-content')))
+        except:
+            print('No es necesario cerrar ningún modal')
+        modal = tab2.driver.find_elements(By.CSS_SELECTOR, '#Notificacion > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > button:nth-child(1)')
+        if len(modal) > 0:
+            modal[0].click()
+        accounts_total = goto_account()
+        base_index = tab2.row_from.get()
+        remaining = True
+        for report in ['Extracto_3', 'Extracto_4']:
+            for account in range(1, accounts_total):
+                goto_account(account)
+                time.sleep(2)
+                WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.ID, report)))
+                tab2.driver.find_element(By.ID, report).click()
+                WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.ID, 'btn-continuar')))
+                tab2.driver.find_element(By.ID, 'btn-continuar').click()
+                try:
+                    WebDriverWait(tab2.driver, 5).until(EC.presence_of_element_located((By.XPATH, '//div[contains(@class, "alert-box error") and text()="No search results found"]')))
+                    error = tab2.driver.find_elements(By.XPATH, '//div[contains(@class, "alert-box error") and text()="No search results found"]')
+                    if len(error) > 0:
+                        continue
+                except:
+                    pass
+                try:
+                    WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.ID, 'CantidadMovimientos')))
+                    amount_select = Select(tab2.driver.find_element(By.ID, 'CantidadMovimientos'))
+                    amount_select.select_by_index(1)
+                except:
+                    pass
+                # Paginación
+                try:
+                    WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/ul')))
+                    paginacion = tab2.driver.find_element(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/ul')
+                    total_pages = len(paginacion.find_elements(By.TAG_NAME, 'li'))
+                    last_li = tab2.driver.find_element(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/ul/li[{}]/a'.format(total_pages))
+                    total_pages = int(last_li.text)
+                except:
+                    total_pages = 1
+                for page in range(1, total_pages+1):
+                    time.sleep(2)
+                    try:
+                        WebDriverWait(tab2.driver, 15).until(EC.element_to_be_clickable((By.XPATH, "//a[contains(@class, 'cambio-extractos') and text()='{}']".format(page))))
+                        tab2.driver.find_element(By.XPATH, "//a[contains(@class, 'cambio-extractos') and text()='{}']".format(page)).click()
+                    except:
+                        pass
+                    time.sleep(4)
+                    WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.ID, 'no-more-tables')))
+                    div = tab2.driver.find_element(By.ID, 'no-more-tables')
+                    table1 = div.find_elements(By.TAG_NAME, 'table')
+                    df1 = pd.read_html(table1[0].get_attribute('outerHTML'))[0]
+                    uninet_deposits = list(df1.get('No. Document.'))
+                    for deposit_index in range(len(tab2.deposits)):
+                        deposit = tab2.deposits[deposit_index]
+                        if deposit['number'] != None and deposit['success'] == False:
+                            if deposit['number'] in uninet_deposits:
+                                index = uninet_deposits.index(deposit['number']) + 1
+                                date = df1.iloc[index-1]['Date']
+                                date = datetime.strptime(date, '%d/%m/%Y')
+                                money = float(df1.iloc[index-1]['Amount'])
+                                time.sleep(2)
+                                WebDriverWait(tab2.driver, 15).until(EC.element_to_be_clickable((By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/div/table/tbody/tr[{}]/td[7]/center/button'.format(index))))
+                                tab2.driver.find_element(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/div/table/tbody/tr[{}]/td[7]/center/button'.format(index)).click()
+                                # Modal detalle
+                                WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.CLASS_NAME, 'modal-dialog')))
+                                div = tab2.driver.find_element(By.CLASS_NAME, 'modal-dialog')
+                                div = div.find_element(By.CLASS_NAME, 'modal-body')
+                                table2 = []
+                                while len(table2) == 0:
+                                    WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.ID, 'DetalleMovimientoModalLabel')))
+                                    table2 = div.find_elements(By.TAG_NAME, 'table')
+                                table2 = table2[0].get_attribute('outerHTML')
+                                df2 = pd.read_html(table2)[0]
+                                tab2.ws.cell(row=base_index+deposit_index, column=4).value = date
+                                tab2.ws.cell(row=base_index+deposit_index, column=6).value = money
+                                tab2.ws.cell(row=base_index+deposit_index, column=9).value = df2[1][2]
+                                ActionChains(tab2.driver).move_to_element(tab2.driver.find_element(By.ID, 'page-wrapper')).click().perform()
+                                time.sleep(2)
+                                tab2.deposits[deposit_index]['success'] = True
+                        remaining = remaining_deposits()
+                        if not remaining:
+                            break
+                    if not remaining:
+                        break
+                if not remaining:
+                    break
+            if not remaining:
+                break
+        tab2.wb.save(config['INPUT']['path'])
+        tab2.driver.quit()
+    button_file_uninet['state'] = 'normal'
+    button_navigator['state'] = 'normal'
+    uninet_row_from['state'] = 'normal'
+    uninet_row_to['state'] = 'normal'
+    uninet_captcha_input['state'] = 'disabled'
+    button_captcha['state'] = 'disabled'
+    uninet_captcha.set('')
+    canvas.itemconfigure(image_container, state='normal')
+    canvas.update()
+    showinfo(
+        title='Datos obtenidos de UNINET',
+        message='El proceso ha finalizado correctamente.'
+    )
+    raise Exception('Imagen actualizada')
+
+def goto_account(account=None):
+    WebDriverWait(tab2.driver, 15).until(EC.element_to_be_clickable((By.ID, 'link-1')))
+    tab2.driver.execute_script('arguments[0].click();', tab2.driver.find_element(By.ID, 'link-1'))
+    WebDriverWait(tab2.driver, 15).until(EC.element_to_be_clickable((By.ID, 'link-12')))
+    tab2.driver.find_element(By.ID, 'link-12').click()
+    WebDriverWait(tab2.driver, 15).until(EC.element_to_be_clickable((By.ID, 'CuentaOrigens_CuentaOrigen')))
+    account_select = Select(tab2.driver.find_element(By.ID, 'CuentaOrigens_CuentaOrigen'))
+    if account == None:
+        return len(account_select.options)
+    else:
+        account_select.select_by_index(account)
+        return None
+
+button_navigator = ttk.Button(tab2, text='Buscar datos de depósitos', style='custom_button.TButton', command=open_navigator)
+button_navigator.grid(sticky='E', column=0, row=3, padx=10, pady=20, columnspan=4)
+
+ttk.Label(tab2, text='Ingrese el texto de la imágen:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=1, row=4, padx=10, pady=5)
+
+canvas = Canvas(tab2, width=150, height=60)
+canvas.grid(sticky='WE', column=0, row=4, padx=10, pady=5)
+image_container = canvas.create_image(75, 30)
+
+uninet_captcha = tk.StringVar(tab2, '')
+uninet_captcha_input = ttk.Entry(tab2, font=('Arial', '12', 'normal'), takefocus=0, textvariable=uninet_captcha, validate='focusout', validatecommand=(empty_validation_command, '%P'), invalidcommand=(empty_message_error_command), state='disabled')
+uninet_captcha_input.grid(sticky='WE', column=2, row=4, padx=10, pady=5)
+
+button_captcha = ttk.Button(tab2, text='Ingresar', style='custom_button.TButton', state='disabled', command=fill_login)
+button_captcha.grid(sticky='E', column=3, row=4, padx=10, pady=20)
+
+
 # Ventana configuración
 
-ttk.Label(tab2, text='Datos de la autoridad firmante', font=('Arial', '14', 'bold underline')).grid(sticky='W', column=0, row=0, padx=10, pady=10, columnspan=4)
+ttk.Label(tab3, text='Datos de la autoridad firmante', font=('Arial', '14', 'bold underline')).grid(sticky='W', column=0, row=0, padx=10, pady=10, columnspan=4)
 
-ttk.Label(tab2, text='Nombre:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=0, row=1, padx=0, pady=5)
+ttk.Label(tab3, text='Nombre:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=0, row=1, padx=0, pady=5)
 signer_name = tk.StringVar(root, config['SIGNER']['name'] if config.has_option('SIGNER', 'name') else '')
-ttk.Entry(tab2, font=('Arial', '12', 'normal'), takefocus=0, textvariable=signer_name, validate='focusout', validatecommand=(empty_validation_command, '%P'), invalidcommand=(empty_message_error_command)).grid(sticky='WE', column=1, row=1, padx=10, pady=5, columnspan=3)
+ttk.Entry(tab3, font=('Arial', '12', 'normal'), takefocus=0, textvariable=signer_name, validate='focusout', validatecommand=(empty_validation_command, '%P'), invalidcommand=(empty_message_error_command)).grid(sticky='WE', column=1, row=1, padx=10, pady=5, columnspan=3)
 
-ttk.Label(tab2, text='Cargo:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=0, row=2, padx=0, pady=5)
+ttk.Label(tab3, text='Cargo:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=0, row=2, padx=0, pady=5)
 signer_charge = tk.StringVar(root, config['SIGNER']['charge'] if config.has_option('SIGNER', 'charge') else '')
-ttk.Entry(tab2, font=('Arial', '12', 'normal'), takefocus=0, textvariable=signer_charge, validate='focusout', validatecommand=(empty_validation_command, '%P'), invalidcommand=(empty_message_error_command)).grid(sticky='WE', column=1, row=2, padx=10, pady=5, columnspan=3)
+ttk.Entry(tab3, font=('Arial', '12', 'normal'), takefocus=0, textvariable=signer_charge, validate='focusout', validatecommand=(empty_validation_command, '%P'), invalidcommand=(empty_message_error_command)).grid(sticky='WE', column=1, row=2, padx=10, pady=5, columnspan=3)
 
-ttk.Label(tab2, text='Plantilla de formulario pdf', font=('Arial', '14', 'bold underline')).grid(sticky='W', column=0, row=3, padx=10, pady=10, columnspan=4)
+ttk.Label(tab3, text='Plantilla de formulario pdf', font=('Arial', '14', 'bold underline')).grid(sticky='W', column=0, row=3, padx=10, pady=10, columnspan=4)
 
-ttk.Label(tab2, text='Formulario PDF:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=0, row=4, padx=10, pady=5)
-ttk.Label(tab2, text='', font=('Arial', '12', 'normal'), anchor='w', textvariable=pdf_form_path, wraplength=340).grid(sticky='WE', column=1, row=4, padx=10, pady=5, columnspan=2)
-ttk.Button(tab2, text='Seleccionar archivo', style='custom_button.TButton', command=lambda:select_file([('pdf file', '*.pdf'), ('pdf file', '*.PDF')], 'FORM')).grid(sticky='E', column=3, row=4, padx=10, pady=5)
+ttk.Label(tab3, text='Formulario PDF:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=0, row=4, padx=10, pady=5)
+ttk.Label(tab3, text='', font=('Arial', '12', 'normal'), anchor='w', textvariable=pdf_form_path, wraplength=340).grid(sticky='WE', column=1, row=4, padx=10, pady=5, columnspan=2)
+ttk.Button(tab3, text='Seleccionar archivo', style='custom_button.TButton', command=lambda:select_file([('pdf file', '*.pdf'), ('pdf file', '*.PDF')], 'FORM')).grid(sticky='E', column=3, row=4, padx=10, pady=5)
+
+ttk.Label(tab3, text='Datos de acceso a UNINET', font=('Arial', '14', 'bold underline')).grid(sticky='W', column=0, row=5, padx=10, pady=10, columnspan=4)
+
+ttk.Label(tab3, text='Usuario:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=0, row=6, padx=0, pady=5)
+uninet_user = tk.StringVar(root, config['UNINET']['user'] if config.has_option('UNINET', 'user') else '')
+ttk.Entry(tab3, font=('Arial', '12', 'normal'), takefocus=0, textvariable=uninet_user, validate='focusout', validatecommand=(empty_validation_command, '%P'), invalidcommand=(empty_message_error_command)).grid(sticky='WE', column=1, row=6, padx=10, pady=5, columnspan=3)
+
+ttk.Label(tab3, text='Contraseña:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=0, row=7, padx=0, pady=5)
+uninet_pass = tk.StringVar(root, config['UNINET']['pass'] if config.has_option('UNINET', 'pass') else '')
+ttk.Entry(tab3, font=('Arial', '12', 'normal'), takefocus=0, textvariable=uninet_pass, validate='focusout', validatecommand=(empty_validation_command, '%P'), invalidcommand=(empty_message_error_command), show="*").grid(sticky='WE', column=1, row=7, padx=10, pady=5, columnspan=3)
 
 def save_config(show_info=True):
     signer_name_value = signer_name.get().strip().upper()
     signer_charge_value = signer_charge.get().strip().upper()
-    if not signer_name_value or not signer_charge_value:
+    uninet_user_value = uninet_user.get().strip()
+    uninet_pass_value = uninet_pass.get().strip()
+    if not signer_name_value or not signer_charge_value or not uninet_user_value or not uninet_pass_value:
         empty_message_error()
         notebook.select(1)
     else:
         config.set('SIGNER', 'name', signer_name_value)
         config.set('SIGNER', 'charge', signer_charge_value)
+        config.set('UNINET', 'user', uninet_user_value)
+        config.set('UNINET', 'pass', uninet_pass_value)
         if file_pdf_path != pdf_form_path.get():
             copy_file(pdf_form_path.get(), file_pdf_path+'_TMP')
             move_file(file_pdf_path+'_TMP', file_pdf_path)
@@ -373,12 +746,12 @@ def save_config(show_info=True):
             showinfo(title='Configuración', message='Configuración guardada exitosamente.')
             notebook.select(0)
 
-ttk.Button(tab2, text='Guardar', style='custom_button.TButton', command=save_config).grid(sticky='E', column=3, row=5, padx=10, pady=20)
+ttk.Button(tab3, text='Guardar', style='custom_button.TButton', command=save_config).grid(sticky='E', column=3, row=8, padx=10, pady=20)
 
 if path_exists(file_config_path):
     notebook.select(0)
 else:
-    notebook.select(1)
+    notebook.select(2)
 
 icon = tk.PhotoImage(data='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')
 root.tk.call('wm', 'iconphoto', root._w, icon)

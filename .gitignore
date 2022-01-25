@@ -1,3 +1,9 @@
+*.log
+geckodriver
+geckodriver.exe
+input/
+output/
+
 # Editors
 .vscode/
 .idea/
