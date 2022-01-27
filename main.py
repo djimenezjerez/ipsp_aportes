@@ -20,15 +20,15 @@ from num2words import num2words
 from math import trunc
 from sys import platform
 import os
+from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium import webdriver
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.support.select import Select
 from selenium.webdriver.common.action_chains import ActionChains
-from datetime import datetime
+from datetime import datetime, date, timedelta
 import pandas as pd
 import time
 
@@ -143,8 +143,10 @@ tab1.progress_current = tk.IntVar(tab1, 0)
 tab1.progress_success = tk.IntVar(tab1, 0)
 tab1.progress = tk.StringVar(tab1, '0/0')
 
-tab2.row_to = tk.IntVar(tab1, 2)
 tab2.row_from = tk.IntVar(tab1, 2)
+tab2.row_to = tk.IntVar(tab1, 2)
+tab2.date_from = tk.StringVar(tab1, (date.today() - timedelta(days=1)).strftime('%d/%m/%Y'))
+tab2.date_to = tk.StringVar(tab1, date.today().strftime('%d/%m/%Y'))
 tab2.driver = None
 
 def select_file(file_types, config_section):
@@ -351,7 +353,7 @@ def generate_pdfs():
     if row_to < 2 or row_from < 2 or row_to > 100000 or row_from > 100000 or type(row_to) is not int or type(row_from) is not int:
         showerror(
             title='Error en la selección de filas',
-            message='El valor de la selección de filas debe estar entre 2 y 1048576.'
+            message='El valor de la selección de filas debe estar entre 2 y 100000.'
         )
         return None
     if row_to < row_from:
@@ -449,6 +451,13 @@ ttk.Label(tab2, text='Hasta fila:', font=('Arial', '12', 'normal'), anchor='e').
 uninet_row_to = ttk.Entry(tab2, font=('Arial', '12', 'normal'), takefocus=0, textvariable=tab2.row_to)
 uninet_row_to.grid(sticky='WE', column=3, row=2, padx=10, pady=5)
 
+ttk.Label(tab2, text='Desde fecha:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=0, row=3, padx=10, pady=5)
+uninet_date_from = ttk.Entry(tab2, font=('Arial', '12', 'normal'), takefocus=0, textvariable=tab2.date_from)
+uninet_date_from.grid(sticky='WE', column=1, row=3, padx=10, pady=5)
+ttk.Label(tab2, text='Hasta fecha:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=2, row=3, padx=10, pady=5)
+uninet_date_to = ttk.Entry(tab2, font=('Arial', '12', 'normal'), takefocus=0, textvariable=tab2.date_to)
+uninet_date_to.grid(sticky='WE', column=3, row=3, padx=10, pady=5)
+
 def draw_captcha_image():
     tab2.driver.get(url)
     captcha_base64 = tab2.driver.find_element(By.XPATH, '//*[@title="Captcha Code"]').get_attribute('src')
@@ -473,6 +482,72 @@ def open_navigator():
             message='Configure nuevamente las credenciales de acceso a UNINET.'
         )
         notebook.select(2)
+        return None
+    if not file_exists(config['INPUT']['path']):
+        config.set('INPUT', 'path', '')
+        save_config(False)
+        excel_input_path.set(file_empty_message)
+        showerror(
+            title='Error al cargar la hoja de cálculo Excel',
+            message='El archivo Excel no existe o no corresponde a la plantilla de datos.'
+        )
+        return None
+    try:
+        row_from = tab2.row_from.get()
+        row_to = tab2.row_to.get()
+    except:
+        showerror(
+            title='Error en la selección de filas',
+            message='El valor de la selección de filas debe ser un número de entre las filas de la Hoja de Excel.'
+        )
+        return None
+    if row_to < 2 or row_from < 2 or row_to > 100000 or row_from > 100000 or type(row_to) is not int or type(row_from) is not int:
+        showerror(
+            title='Error en la selección de filas',
+            message='El valor de la selección de filas debe estar entre 2 y 100000.'
+        )
+        return None
+    if row_to < row_from:
+        showerror(
+            title='Error en la selección de filas',
+            message='El valor Hasta fila debe ser mayor o igual que el valor Desde fila.'
+        )
+        return None
+    try:
+        date_from = tab2.date_from.get()
+        date_to = tab2.date_to.get()
+        dates = [date_from.split('/'), date_to.split('/')]
+        for date in dates:
+            if len(date) != 3:
+                showerror(
+                    title='Error en el formato de fecha',
+                    message='El formato de fecha debe coincidir con: dd/mm/aaaa.'
+                )
+                return None
+            if len(date[0]) != 2 or len(date[1]) != 2 or len(date[2]) != 4:
+                showerror(
+                    title='Error en el formato de fecha',
+                    message='El formato de fecha debe coincidir con: dd/mm/aaaa.'
+                )
+                return None
+        try:
+            if datetime.strptime(date_to, '%d/%m/%Y') < datetime.strptime(date_from, '%d/%m/%Y'):
+                showerror(
+                    title='Error en las fechas',
+                    message='La fecha Hasta debe ser mayor o igual que la fecha Desde.'
+                )
+                return None
+        except:
+            showerror(
+                title='Error en el formato de fecha',
+                message='El formato de fecha debe coincidir con: dd/mm/aaaa.'
+            )
+            return None
+    except:
+        showerror(
+            title='Error en el formato de fecha',
+            message='El formato de fecha debe coincidir con: dd/mm/aaaa.'
+        )
         return None
     try:
         os.rename(config['INPUT']['path'], config['INPUT']['path'])
@@ -504,6 +579,8 @@ def open_navigator():
     button_navigator['state'] = 'disabled'
     uninet_row_from['state'] = 'disabled'
     uninet_row_to['state'] = 'disabled'
+    uninet_date_from['state'] = 'disabled'
+    uninet_date_to['state'] = 'disabled'
     service = Service(os.path.join(os.getcwd(), 'geckodriver.exe' if os.name == 'nt' else 'geckodriver'))
     tab2.driver = webdriver.Firefox(options=options, service=service)
     draw_captcha_image()
@@ -553,6 +630,8 @@ def fill_login():
                 button_navigator['state'] = 'normal'
                 uninet_row_from['state'] = 'normal'
                 uninet_row_to['state'] = 'normal'
+                uninet_date_from['state'] = 'normal'
+                uninet_date_to['state'] = 'normal'
                 uninet_captcha_input['state'] = 'disabled'
                 button_captcha['state'] = 'disabled'
                 return None
@@ -568,91 +647,94 @@ def fill_login():
         accounts_total = goto_account()
         base_index = tab2.row_from.get()
         remaining = True
-        for report in ['Extracto_3', 'Extracto_4']:
-            for account in range(1, accounts_total):
-                goto_account(account)
+        for account in range(1, accounts_total):
+            goto_account(account)
+            time.sleep(2)
+            WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.ID, 'Extracto_5')))
+            tab2.driver.find_element(By.ID, 'Extracto_5').click()
+            WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.ID, 'start')))
+            WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.ID, 'end')))
+            tab2.driver.execute_script('arguments[0].setAttribute("value", "{}")'.format(tab2.date_from.get()), tab2.driver.find_element(By.ID, 'start'))
+            tab2.driver.execute_script('arguments[0].setAttribute("value", "{}")'.format(tab2.date_to.get()), tab2.driver.find_element(By.ID, 'end'))
+            WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.ID, 'btn-continuar')))
+            tab2.driver.find_element(By.ID, 'btn-continuar').click()
+            try:
+                WebDriverWait(tab2.driver, 5).until(EC.presence_of_element_located((By.XPATH, '//div[contains(@class, "alert-box error") and text()="No search results found"]')))
+                error = tab2.driver.find_elements(By.XPATH, '//div[contains(@class, "alert-box error") and text()="No search results found"]')
+                if len(error) > 0:
+                    continue
+            except:
+                pass
+            try:
+                WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.ID, 'CantidadMovimientos')))
+                amount_select = Select(tab2.driver.find_element(By.ID, 'CantidadMovimientos'))
+                amount_select.select_by_index(1)
+            except:
+                pass
+            # Paginación
+            try:
+                WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/ul')))
+                paginacion = tab2.driver.find_element(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/ul')
+                total_pages = len(paginacion.find_elements(By.TAG_NAME, 'li'))
+                last_li = tab2.driver.find_element(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/ul/li[{}]/a'.format(total_pages))
+                total_pages = int(last_li.text)
+            except:
+                total_pages = 1
+            for page in range(1, total_pages+1):
                 time.sleep(2)
-                WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.ID, report)))
-                tab2.driver.find_element(By.ID, report).click()
-                WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.ID, 'btn-continuar')))
-                tab2.driver.find_element(By.ID, 'btn-continuar').click()
                 try:
-                    WebDriverWait(tab2.driver, 5).until(EC.presence_of_element_located((By.XPATH, '//div[contains(@class, "alert-box error") and text()="No search results found"]')))
-                    error = tab2.driver.find_elements(By.XPATH, '//div[contains(@class, "alert-box error") and text()="No search results found"]')
-                    if len(error) > 0:
-                        continue
+                    WebDriverWait(tab2.driver, 15).until(EC.element_to_be_clickable((By.XPATH, "//a[contains(@class, 'cambio-extractos') and text()='{}']".format(page))))
+                    tab2.driver.find_element(By.XPATH, "//a[contains(@class, 'cambio-extractos') and text()='{}']".format(page)).click()
                 except:
                     pass
-                try:
-                    WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.ID, 'CantidadMovimientos')))
-                    amount_select = Select(tab2.driver.find_element(By.ID, 'CantidadMovimientos'))
-                    amount_select.select_by_index(1)
-                except:
-                    pass
-                # Paginación
-                try:
-                    WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/ul')))
-                    paginacion = tab2.driver.find_element(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/ul')
-                    total_pages = len(paginacion.find_elements(By.TAG_NAME, 'li'))
-                    last_li = tab2.driver.find_element(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/ul/li[{}]/a'.format(total_pages))
-                    total_pages = int(last_li.text)
-                except:
-                    total_pages = 1
-                for page in range(1, total_pages+1):
-                    time.sleep(2)
-                    try:
-                        WebDriverWait(tab2.driver, 15).until(EC.element_to_be_clickable((By.XPATH, "//a[contains(@class, 'cambio-extractos') and text()='{}']".format(page))))
-                        tab2.driver.find_element(By.XPATH, "//a[contains(@class, 'cambio-extractos') and text()='{}']".format(page)).click()
-                    except:
-                        pass
-                    time.sleep(4)
-                    WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.ID, 'no-more-tables')))
-                    div = tab2.driver.find_element(By.ID, 'no-more-tables')
-                    table1 = div.find_elements(By.TAG_NAME, 'table')
-                    df1 = pd.read_html(table1[0].get_attribute('outerHTML'))[0]
-                    uninet_deposits = list(df1.get('No. Document.'))
-                    for deposit_index in range(len(tab2.deposits)):
-                        deposit = tab2.deposits[deposit_index]
-                        if deposit['number'] != None and deposit['success'] == False:
-                            if deposit['number'] in uninet_deposits:
-                                index = uninet_deposits.index(deposit['number']) + 1
-                                date = df1.iloc[index-1]['Date']
-                                date = datetime.strptime(date, '%d/%m/%Y')
-                                money = float(df1.iloc[index-1]['Amount'])
-                                time.sleep(2)
-                                WebDriverWait(tab2.driver, 15).until(EC.element_to_be_clickable((By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/div/table/tbody/tr[{}]/td[7]/center/button'.format(index))))
-                                tab2.driver.find_element(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/div/table/tbody/tr[{}]/td[7]/center/button'.format(index)).click()
-                                # Modal detalle
-                                WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.CLASS_NAME, 'modal-dialog')))
-                                div = tab2.driver.find_element(By.CLASS_NAME, 'modal-dialog')
-                                div = div.find_element(By.CLASS_NAME, 'modal-body')
-                                table2 = []
-                                while len(table2) == 0:
-                                    WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.ID, 'DetalleMovimientoModalLabel')))
-                                    table2 = div.find_elements(By.TAG_NAME, 'table')
-                                table2 = table2[0].get_attribute('outerHTML')
-                                df2 = pd.read_html(table2)[0]
-                                tab2.ws.cell(row=base_index+deposit_index, column=4).value = date
-                                tab2.ws.cell(row=base_index+deposit_index, column=6).value = money
-                                tab2.ws.cell(row=base_index+deposit_index, column=9).value = df2[1][2]
-                                ActionChains(tab2.driver).move_to_element(tab2.driver.find_element(By.ID, 'page-wrapper')).click().perform()
-                                time.sleep(2)
-                                tab2.deposits[deposit_index]['success'] = True
-                        remaining = remaining_deposits()
-                        if not remaining:
-                            break
+                time.sleep(4)
+                WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.ID, 'no-more-tables')))
+                div = tab2.driver.find_element(By.ID, 'no-more-tables')
+                table1 = div.find_elements(By.TAG_NAME, 'table')
+                df1 = pd.read_html(table1[0].get_attribute('outerHTML'))[0]
+                uninet_deposits = list(df1.get('No. Document.'))
+                for deposit_index in range(len(tab2.deposits)):
+                    deposit = tab2.deposits[deposit_index]
+                    if deposit['number'] != None and deposit['success'] == False:
+                        if deposit['number'] in uninet_deposits:
+                            index = uninet_deposits.index(deposit['number']) + 1
+                            date = df1.iloc[index-1]['Date']
+                            date = datetime.strptime(date, '%d/%m/%Y')
+                            money = float(df1.iloc[index-1]['Amount'])
+                            time.sleep(3)
+                            WebDriverWait(tab2.driver, 15).until(EC.element_to_be_clickable((By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/div/table/tbody/tr[{}]/td[7]/center/button'.format(index))))
+                            tab2.driver.find_element(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/div/table/tbody/tr[{}]/td[7]/center/button'.format(index)).click()
+                            # Modal detalle
+                            WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.CLASS_NAME, 'modal-dialog')))
+                            div = tab2.driver.find_element(By.CLASS_NAME, 'modal-dialog')
+                            div = div.find_element(By.CLASS_NAME, 'modal-body')
+                            table2 = []
+                            while len(table2) == 0:
+                                WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.ID, 'DetalleMovimientoModalLabel')))
+                                table2 = div.find_elements(By.TAG_NAME, 'table')
+                            table2 = table2[0].get_attribute('outerHTML')
+                            df2 = pd.read_html(table2)[0]
+                            tab2.ws.cell(row=base_index+deposit_index, column=4).value = date
+                            tab2.ws.cell(row=base_index+deposit_index, column=6).value = money
+                            tab2.ws.cell(row=base_index+deposit_index, column=9).value = df2[1][2]
+                            ActionChains(tab2.driver).move_to_element(tab2.driver.find_element(By.ID, 'page-wrapper')).click().perform()
+                            time.sleep(2)
+                            tab2.deposits[deposit_index]['success'] = True
+                            tab2.wb.save(config['INPUT']['path'])
+                    remaining = remaining_deposits()
                     if not remaining:
                         break
                 if not remaining:
                     break
             if not remaining:
                 break
-        tab2.wb.save(config['INPUT']['path'])
-        tab2.driver.quit()
+    tab2.driver.quit()
     button_file_uninet['state'] = 'normal'
     button_navigator['state'] = 'normal'
     uninet_row_from['state'] = 'normal'
     uninet_row_to['state'] = 'normal'
+    uninet_date_from['state'] = 'normal'
+    uninet_date_to['state'] = 'normal'
     uninet_captcha_input['state'] = 'disabled'
     button_captcha['state'] = 'disabled'
     uninet_captcha.set('')
@@ -678,20 +760,20 @@ def goto_account(account=None):
         return None
 
 button_navigator = ttk.Button(tab2, text='Buscar datos de depósitos', style='custom_button.TButton', command=open_navigator)
-button_navigator.grid(sticky='E', column=0, row=3, padx=10, pady=20, columnspan=4)
+button_navigator.grid(sticky='E', column=0, row=4, padx=10, pady=20, columnspan=4)
 
-ttk.Label(tab2, text='Ingrese el texto de la imágen:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=1, row=4, padx=10, pady=5)
+ttk.Label(tab2, text='Ingrese el texto de la imágen:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=1, row=5, padx=10, pady=5)
 
 canvas = Canvas(tab2, width=150, height=60)
-canvas.grid(sticky='WE', column=0, row=4, padx=10, pady=5)
+canvas.grid(sticky='WE', column=0, row=5, padx=10, pady=5)
 image_container = canvas.create_image(75, 30)
 
 uninet_captcha = tk.StringVar(tab2, '')
 uninet_captcha_input = ttk.Entry(tab2, font=('Arial', '12', 'normal'), takefocus=0, textvariable=uninet_captcha, validate='focusout', validatecommand=(empty_validation_command, '%P'), invalidcommand=(empty_message_error_command), state='disabled')
-uninet_captcha_input.grid(sticky='WE', column=2, row=4, padx=10, pady=5)
+uninet_captcha_input.grid(sticky='WE', column=2, row=5, padx=10, pady=5)
 
 button_captcha = ttk.Button(tab2, text='Ingresar', style='custom_button.TButton', state='disabled', command=fill_login)
-button_captcha.grid(sticky='E', column=3, row=4, padx=10, pady=20)
+button_captcha.grid(sticky='E', column=3, row=5, padx=10, pady=20)
 
 
 # Ventana configuración
