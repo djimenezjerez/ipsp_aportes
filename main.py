@@ -148,6 +148,7 @@ tab2.row_to = tk.IntVar(tab1, 2)
 tab2.date_from = tk.StringVar(tab1, (date.today() - timedelta(days=1)).strftime('%d/%m/%Y'))
 tab2.date_to = tk.StringVar(tab1, date.today().strftime('%d/%m/%Y'))
 tab2.driver = None
+tab2.progress = tk.StringVar(tab1, '0%')
 
 def select_file(file_types, config_section):
     filename = fd.askopenfilename(
@@ -476,6 +477,7 @@ def remaining_deposits():
     return len(list(filter(lambda d: d['success'] == False, tab2.deposits))) > 0
 
 def open_navigator():
+    tab2.progress.set('0%')
     if config['UNINET']['user'] == None or config['UNINET']['user'] == '' or config['UNINET']['pass'] == None or config['UNINET']['pass'] == '':
         showerror(
             title='Credenciales de UNINET incorrectas',
@@ -555,13 +557,19 @@ def open_navigator():
         load_excel_data(2)
         for row in (range(tab2.row_from.get(), tab2.row_to.get() + 1)):
             deposit = tab2.ws.cell(row=row, column=5).value
+            success = True
+            if tab2.ws.cell(row=row, column=5).value != None and tab2.ws.cell(row=row, column=5).value != '':
+                success = False
+            if tab2.ws.cell(row=row, column=4).value != None and tab2.ws.cell(row=row, column=6).value != None and tab2.ws.cell(row=row, column=9).value != None and tab2.ws.cell(row=row, column=4).value != '' and tab2.ws.cell(row=row, column=6).value != '' and tab2.ws.cell(row=row, column=9).value != '':
+                success = True
             try:
                 deposit = int(deposit)
             except:
                 deposit = None if deposit == '' else deposit
             tab2.deposits.append({
                 'number': deposit,
-                'success': True if deposit == None else False
+                'row': row,
+                'success': success
             })
     except:
         showerror(
@@ -599,6 +607,10 @@ def fill_login():
     input_user.send_keys(config['UNINET']['user'])
     tab2.driver.find_element(By.ID, 'Captcha').send_keys(uninet_captcha_input.get())
     tab2.driver.find_element(By.XPATH, '//input[@value="Login"]').click()
+    try:
+        WebDriverWait(tab2.driver, 5).until(EC.presence_of_element_located((By.XPATH, '/html/body/div[2]/section/form/div[3]/div[1]/div[2]/div[7]')))
+    except:
+        pass
     error = tab2.driver.find_elements(By.XPATH, '/html/body/div[2]/section/form/div[3]/div[1]/div[2]/div[7]')
     if len(error) > 0:
         if error[0].text == 'The capcha code does not correspond with the image.':
@@ -645,7 +657,6 @@ def fill_login():
         if len(modal) > 0:
             modal[0].click()
         accounts_total = goto_account()
-        base_index = tab2.row_from.get()
         remaining = True
         for account in range(1, accounts_total):
             goto_account(account)
@@ -693,32 +704,82 @@ def fill_login():
                 table1 = div.find_elements(By.TAG_NAME, 'table')
                 df1 = pd.read_html(table1[0].get_attribute('outerHTML'))[0]
                 uninet_deposits = list(df1.get('No. Document.'))
-                for deposit_index in range(len(tab2.deposits)):
+                for deposit_index in range(0, len(tab2.deposits)):
                     deposit = tab2.deposits[deposit_index]
+                    tab2.progress.set('Cuenta: {0}/{1} - Página: {2}/{3} - Fila: {4} - Buscando documento: {5}'.format(account, accounts_total-1, page, total_pages, deposit['row'], deposit['number'] if deposit['number'] != None else '-'))
+                    tab2.update()
                     if deposit['number'] != None and deposit['success'] == False:
                         if deposit['number'] in uninet_deposits:
                             index = uninet_deposits.index(deposit['number']) + 1
                             date = df1.iloc[index-1]['Date']
-                            date = datetime.strptime(date, '%d/%m/%Y')
+                            try:
+                                date = datetime.strptime(date, '%d/%m/%Y')
+                            except:
+                                pass
                             money = float(df1.iloc[index-1]['Amount'])
-                            time.sleep(3)
-                            WebDriverWait(tab2.driver, 15).until(EC.element_to_be_clickable((By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/div/table/tbody/tr[{}]/td[7]/center/button'.format(index))))
+                            tab2.ws.cell(row=deposit['row'], column=4).value = date
+                            tab2.ws.cell(row=deposit['row'], column=6).value = money
+                            tab2.wb.save(config['INPUT']['path'])
+                            # Buscar nombre y CI
+                            description = df1.iloc[index-1]['Description'].upper().strip()
+                            tag_visible = False
+                            while not tag_visible:
+                                try:
+                                    WebDriverWait(tab2.driver, 15).until(EC.element_to_be_clickable((By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/div/table/tbody/tr[{}]/td[7]/center/button'.format(index))))
+                                    elements = tab2.driver.find_elements(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/div/table/tbody/tr[{}]/td[7]/center/button'.format(index))
+                                    if len(elements) > 0:
+                                        tag_visible = True
+                                except:
+                                    pass
                             tab2.driver.find_element(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/div/table/tbody/tr[{}]/td[7]/center/button'.format(index)).click()
                             # Modal detalle
                             WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.CLASS_NAME, 'modal-dialog')))
-                            div = tab2.driver.find_element(By.CLASS_NAME, 'modal-dialog')
-                            div = div.find_element(By.CLASS_NAME, 'modal-body')
+                            div2 = tab2.driver.find_element(By.CLASS_NAME, 'modal-dialog')
+                            div3 = div2.find_element(By.CLASS_NAME, 'modal-body')
                             table2 = []
                             while len(table2) == 0:
                                 WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.ID, 'DetalleMovimientoModalLabel')))
-                                table2 = div.find_elements(By.TAG_NAME, 'table')
+                                table2 = div3.find_elements(By.TAG_NAME, 'table')
                             table2 = table2[0].get_attribute('outerHTML')
                             df2 = pd.read_html(table2)[0]
-                            tab2.ws.cell(row=base_index+deposit_index, column=4).value = date
-                            tab2.ws.cell(row=base_index+deposit_index, column=6).value = money
-                            tab2.ws.cell(row=base_index+deposit_index, column=9).value = df2[1][2]
-                            ActionChains(tab2.driver).move_to_element(tab2.driver.find_element(By.ID, 'page-wrapper')).click().perform()
-                            time.sleep(2)
+                            if description == 'DEPOSITO A CUENTA':
+                                name_ci = df2[1][2].upper().strip().split(' CI ')
+                            elif description == 'N/C POR TRASPASO ENTRE BANCOS ACH':
+                                name_ci = df2[1][3].upper().strip().split(' CI ')
+                            elif 'N/C TRASP.' in description:
+                                name_ci = df2[1][4].upper().strip()
+                                name_ci = name_ci.split('-')
+                                if len(name_ci) > 1:
+                                    name_ci = name_ci[1].upper().strip().split(' CI ')
+                                else:
+                                    continue
+                            else:
+                                continue
+                            name = name_ci[0]
+                            ci = False
+                            if len(name_ci) == 2:
+                                ci = name_ci[1].strip()
+                            tab2.ws.cell(row=deposit['row'], column=9).value = name
+                            if ci != False:
+                                tab2.ws.cell(row=deposit['row'], column=10).value = ci
+                            tag_visible = False
+                            while not tag_visible:
+                                try:
+                                    ActionChains(tab2.driver).move_to_element(tab2.driver.find_element(By.ID, 'page-wrapper')).click().perform()
+                                except:
+                                    pass
+                                try:
+                                    tab2.driver.find_element(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[4]/div/div/div/div[3]/button[2]').click()
+                                except:
+                                    pass
+                                try:
+                                    tab2.driver.find_element(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[4]/div/div/div/div[1]/button/span').click()
+                                except:
+                                    pass
+                                try:
+                                    WebDriverWait(tab2.driver, 3).until(EC.visibility_of_element_located((By.ID, 'DetalleMovimientoModalLabel')))
+                                except:
+                                    tag_visible = True
                             tab2.deposits[deposit_index]['success'] = True
                             tab2.wb.save(config['INPUT']['path'])
                     remaining = remaining_deposits()
@@ -744,6 +805,8 @@ def fill_login():
         title='Datos obtenidos de UNINET',
         message='El proceso ha finalizado correctamente.'
     )
+    tab2.progress.set('100%')
+    tab2.update()
     raise Exception('Imagen actualizada')
 
 def goto_account(account=None):
@@ -775,6 +838,8 @@ uninet_captcha_input.grid(sticky='WE', column=2, row=5, padx=10, pady=5)
 button_captcha = ttk.Button(tab2, text='Ingresar', style='custom_button.TButton', state='disabled', command=fill_login)
 button_captcha.grid(sticky='E', column=3, row=5, padx=10, pady=20)
 
+ttk.Label(tab2, text='Progreso:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=0, row=6, padx=10, pady=5)
+ttk.Label(tab2, textvariable=tab2.progress, font=('Arial', '12', 'normal'), anchor='e').grid(sticky='W', column=1, row=6, padx=10, pady=5, columnspan=3)
 
 # Ventana configuración
 
