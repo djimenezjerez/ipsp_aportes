@@ -31,6 +31,7 @@ from selenium.webdriver.common.action_chains import ActionChains
 from datetime import datetime, date, timedelta
 import pandas as pd
 import time
+import math
 
 def empty_validation(input):
     if not input or input == '' or input == None:
@@ -143,12 +144,13 @@ tab1.progress_current = tk.IntVar(tab1, 0)
 tab1.progress_success = tk.IntVar(tab1, 0)
 tab1.progress = tk.StringVar(tab1, '0/0')
 
-tab2.row_from = tk.IntVar(tab1, 2)
-tab2.row_to = tk.IntVar(tab1, 2)
-tab2.date_from = tk.StringVar(tab1, (date.today() - timedelta(days=1)).strftime('%d/%m/%Y'))
-tab2.date_to = tk.StringVar(tab1, date.today().strftime('%d/%m/%Y'))
+tab2.row_from = tk.IntVar(tab2, 2)
+tab2.row_to = tk.IntVar(tab2, 2)
+tab2.date_from = tk.StringVar(tab2, (date.today().replace(day=1)).strftime('%d/%m/%Y'))
+tab2.date_to = tk.StringVar(tab2, date.today().strftime('%d/%m/%Y'))
 tab2.driver = None
-tab2.progress = tk.StringVar(tab1, '0%')
+tab2.progress = tk.StringVar(tab2, '0%')
+tab2.step = tk.IntVar(tab2, 0)
 
 def select_file(file_types, config_section):
     filename = fd.askopenfilename(
@@ -478,6 +480,7 @@ def remaining_deposits():
 
 def open_navigator():
     tab2.progress.set('0%')
+    tab2.step.set(0)
     if config['UNINET']['user'] == None or config['UNINET']['user'] == '' or config['UNINET']['pass'] == None or config['UNINET']['pass'] == '':
         showerror(
             title='Credenciales de UNINET incorrectas',
@@ -577,11 +580,15 @@ def open_navigator():
             message='Debe cerrar el archivo Excel para poder modificarlo.'
         )
         return None
+    tab2.progressbar['maximum'] = len(tab2.deposits)
+    tab2.update()
     if not remaining_deposits():
         showinfo(
             title='Datos obtenidos',
             message='El proceso ha finalizado correctamente.'
         )
+        tab2.progress.set('100%')
+        tab2.step.set(tab2.progressbar['maximum'])
         return None
     button_file_uninet['state'] = 'disabled'
     button_navigator['state'] = 'disabled'
@@ -706,7 +713,8 @@ def fill_login():
                 uninet_deposits = list(df1.get('No. Document.'))
                 for deposit_index in range(0, len(tab2.deposits)):
                     deposit = tab2.deposits[deposit_index]
-                    tab2.progress.set('Cuenta: {0}/{1} - Página: {2}/{3} - Fila: {4} - Buscando documento: {5}'.format(account, accounts_total-1, page, total_pages, deposit['row'], deposit['number'] if deposit['number'] != None else '-'))
+                    progress = int(math.ceil(100 * tab2.step.get() / tab2.progressbar['maximum']))
+                    tab2.progress.set('{0}% - Cuenta: {1}/{2} - Página: {3}/{4} - Fila: {5} - Buscando documento: {6}'.format(progress, account, accounts_total-1, page, total_pages, deposit['row'], deposit['number'] if deposit['number'] != None else '-'))
                     tab2.update()
                     if deposit['number'] != None and deposit['success'] == False:
                         if deposit['number'] in uninet_deposits:
@@ -732,14 +740,20 @@ def fill_login():
                                 except:
                                     pass
                             tab2.driver.find_element(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/div/table/tbody/tr[{}]/td[7]/center/button'.format(index)).click()
+                            time.sleep(2)
                             # Modal detalle
                             WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.CLASS_NAME, 'modal-dialog')))
                             div2 = tab2.driver.find_element(By.CLASS_NAME, 'modal-dialog')
                             div3 = div2.find_element(By.CLASS_NAME, 'modal-body')
                             table2 = []
                             while len(table2) == 0:
-                                WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.ID, 'DetalleMovimientoModalLabel')))
-                                table2 = div3.find_elements(By.TAG_NAME, 'table')
+                                try:
+                                    WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.CSS_SELECTOR, 'div.modal.fade.in#DetalleMovimiento')))
+                                    WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.ID, 'DetalleMovimientoModalLabel')))
+                                    ActionChains(tab2.driver).move_to_element(tab2.driver.find_element(By.ID, 'DetalleMovimientoModalLabel')).perform()
+                                    table2 = div3.find_elements(By.TAG_NAME, 'table')
+                                except:
+                                    pass
                             table2 = table2[0].get_attribute('outerHTML')
                             df2 = pd.read_html(table2)[0]
                             if description == 'DEPOSITO A CUENTA':
@@ -782,6 +796,8 @@ def fill_login():
                                     tag_visible = True
                             tab2.deposits[deposit_index]['success'] = True
                             tab2.wb.save(config['INPUT']['path'])
+                            tab2.step.set(tab2.step.get() + 1)
+                            tab2.update()
                     remaining = remaining_deposits()
                     if not remaining:
                         break
@@ -790,6 +806,8 @@ def fill_login():
             if not remaining:
                 break
     tab2.driver.quit()
+    tab2.step.set(tab2.progressbar['maximum'])
+    tab2.update()
     button_file_uninet['state'] = 'normal'
     button_navigator['state'] = 'normal'
     uninet_row_from['state'] = 'normal'
@@ -839,7 +857,10 @@ button_captcha = ttk.Button(tab2, text='Ingresar', style='custom_button.TButton'
 button_captcha.grid(sticky='E', column=3, row=5, padx=10, pady=20)
 
 ttk.Label(tab2, text='Progreso:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=0, row=6, padx=10, pady=5)
-ttk.Label(tab2, textvariable=tab2.progress, font=('Arial', '12', 'normal'), anchor='e').grid(sticky='W', column=1, row=6, padx=10, pady=5, columnspan=3)
+tab2.progressbar = ttk.Progressbar(tab2, maximum=100, variable=tab2.step)
+tab2.progressbar.grid(sticky='WE', column=1, row=6, padx=10, pady=5, columnspan=3)
+
+ttk.Label(tab2, textvariable=tab2.progress, font=('Arial', '12', 'normal'), anchor='e').grid(sticky='W', column=1, row=7, padx=10, pady=5, columnspan=3)
 
 # Ventana configuración
 
