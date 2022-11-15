@@ -45,6 +45,41 @@ def empty_message_error():
         message='Los campos no pueden estar vacíos.'
     )
 
+def separar_numeros(texto):
+    numeros = False
+    for letra in texto:
+        if letra.isdigit():
+            numeros = True
+            break
+    if numeros:
+        for i, letra in enumerate(texto):
+            if letra.isdigit():
+                return [texto[:i], texto[i:]]
+    return [texto]
+
+def separar_ci(depositante):
+    if 'C.I.' in depositante:
+        datos = depositante.split('C.I.')
+    elif 'CI:' in depositante:
+        datos = depositante.split('CI:')
+    elif 'CI.' in depositante:
+        datos = depositante.split('CI.')
+    elif 'C.I' in depositante:
+        datos = depositante.split('C.I')
+    elif 'CI,' in depositante:
+        datos = depositante.split('CI,')
+    elif 'C,I,' in depositante:
+        datos = depositante.split('C,I,')
+    elif '-' in depositante:
+        datos = depositante.split('-')
+    else:
+        datos = depositante.split(' CI ')
+    if len(datos) == 1:
+        datos = separar_numeros(datos[0])
+    for i in range(len(datos)):
+        datos[i] = datos[i].strip('-').strip(':').strip(',').strip('.').strip()
+    return datos
+
 # UNINET
 url = 'https://uninetplus.bancounion.com.bo/Uninetplus/Account/Login'
 options = Options()
@@ -481,6 +516,15 @@ def remaining_deposits():
 def open_navigator():
     tab2.progress.set('0%')
     tab2.step.set(0)
+    if config['UNINET']['firefox'] == None or config['UNINET']['firefox'] == '':
+        showerror(
+            title='Ruta de firefox inexistente',
+            message='Configure nuevamente la ruta de instalación de Firefox.'
+        )
+        notebook.select(2)
+        return None
+    else:
+        options.binary_location = config['UNINET']['firefox']
     if config['UNINET']['user'] == None or config['UNINET']['user'] == '' or config['UNINET']['pass'] == None or config['UNINET']['pass'] == '':
         showerror(
             title='Credenciales de UNINET incorrectas',
@@ -691,10 +735,10 @@ def fill_login():
                 pass
             # Paginación
             try:
-                WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/ul')))
-                paginacion = tab2.driver.find_element(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/ul')
+                WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.CLASS_NAME, 'pagination')))
+                paginacion = tab2.driver.find_element(By.CLASS_NAME, 'pagination')
                 total_pages = len(paginacion.find_elements(By.TAG_NAME, 'li'))
-                last_li = tab2.driver.find_element(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/ul/li[{}]/a'.format(total_pages))
+                last_li = tab2.driver.find_element(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[2]/div[2]/form/div[2]/div/div[2]/ul/li[{}]/a'.format(total_pages))
                 total_pages = int(last_li.text)
             except:
                 total_pages = 1
@@ -733,13 +777,13 @@ def fill_login():
                             tag_visible = False
                             while not tag_visible:
                                 try:
-                                    WebDriverWait(tab2.driver, 15).until(EC.element_to_be_clickable((By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/div/table/tbody/tr[{}]/td[7]/center/button'.format(index))))
-                                    elements = tab2.driver.find_elements(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/div/table/tbody/tr[{}]/td[7]/center/button'.format(index))
+                                    WebDriverWait(tab2.driver, 15).until(EC.element_to_be_clickable((By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[2]/div[2]/form/div[2]/div/div[2]/div/table/tbody/tr[{}]/td[7]/center/button'.format(index))))
+                                    elements = tab2.driver.find_elements(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[2]/div[2]/form/div[2]/div/div[2]/div/table/tbody/tr[{}]/td[7]/center/button'.format(index))
                                     if len(elements) > 0:
                                         tag_visible = True
                                 except:
                                     pass
-                            tab2.driver.find_element(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[2]/div/table/tbody/tr[{}]/td[7]/center/button'.format(index)).click()
+                            tab2.driver.find_element(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[2]/div[2]/form/div[2]/div/div[2]/div/table/tbody/tr[{}]/td[7]/center/button'.format(index)).click()
                             time.sleep(2)
                             # Modal detalle
                             WebDriverWait(tab2.driver, 15).until(EC.presence_of_element_located((By.CLASS_NAME, 'modal-dialog')))
@@ -757,19 +801,19 @@ def fill_login():
                             table2 = table2[0].get_attribute('outerHTML')
                             df2 = pd.read_html(table2)[0]
                             if description == 'DEPOSITO A CUENTA':
-                                name_ci = df2[1][2].upper().strip().split(' CI ')
+                                name_ci = separar_ci(df2[1][2].upper().strip())
                             elif description == 'N/C POR TRASPASO ENTRE BANCOS ACH':
-                                name_ci = df2[1][3].upper().strip().split(' CI ')
+                                name_ci = separar_ci(df2[1][3].upper().strip())
                             elif 'N/C TRASP.' in description:
                                 name_ci = df2[1][4].upper().strip()
                                 name_ci = name_ci.split('-')
                                 if len(name_ci) > 1:
-                                    name_ci = name_ci[1].upper().strip().split(' CI ')
+                                    name_ci = separar_ci(name_ci[1].upper().strip())
                                 else:
                                     continue
                             else:
                                 continue
-                            name = name_ci[0]
+                            name = name_ci[0].strip()
                             ci = False
                             if len(name_ci) == 2:
                                 ci = name_ci[1].strip()
@@ -783,7 +827,7 @@ def fill_login():
                                 except:
                                     pass
                                 try:
-                                    tab2.driver.find_element(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[1]/div[2]/form/div[2]/div/div[4]/div/div/div/div[3]/button[2]').click()
+                                    tab2.driver.find_element(By.XPATH, '/html/body/div[2]/div[1]/div/div/div/div[2]/div[2]/form/div[2]/div/div[4]/div/div/div/div[3]/button[2]').click()
                                 except:
                                     pass
                                 try:
@@ -890,12 +934,17 @@ ttk.Label(tab3, text='Contraseña:', font=('Arial', '12', 'normal'), anchor='e')
 uninet_pass = tk.StringVar(root, config['UNINET']['pass'] if config.has_option('UNINET', 'pass') else '')
 ttk.Entry(tab3, font=('Arial', '12', 'normal'), takefocus=0, textvariable=uninet_pass, validate='focusout', validatecommand=(empty_validation_command, '%P'), invalidcommand=(empty_message_error_command), show="*").grid(sticky='WE', column=1, row=7, padx=10, pady=5, columnspan=3)
 
+ttk.Label(tab3, text='Ruta Firefox:', font=('Arial', '12', 'normal'), anchor='e').grid(sticky='WE', column=0, row=8, padx=0, pady=5)
+firefox_path = tk.StringVar(root, config['UNINET']['firefox'] if config.has_option('UNINET', 'firefox') else '')
+ttk.Entry(tab3, font=('Arial', '12', 'normal'), takefocus=0, textvariable=firefox_path, validate='focusout', validatecommand=(empty_validation_command, '%P'), invalidcommand=(empty_message_error_command)).grid(sticky='WE', column=1, row=8, padx=10, pady=5, columnspan=3)
+
 def save_config(show_info=True):
     signer_name_value = signer_name.get().strip().upper()
     signer_charge_value = signer_charge.get().strip().upper()
     uninet_user_value = uninet_user.get().strip()
     uninet_pass_value = uninet_pass.get().strip()
-    if not signer_name_value or not signer_charge_value or not uninet_user_value or not uninet_pass_value:
+    firefox_path_value = firefox_path.get().strip()
+    if not signer_name_value or not signer_charge_value or not uninet_user_value or not uninet_pass_value or not firefox_path_value:
         empty_message_error()
         notebook.select(1)
     else:
@@ -903,6 +952,7 @@ def save_config(show_info=True):
         config.set('SIGNER', 'charge', signer_charge_value)
         config.set('UNINET', 'user', uninet_user_value)
         config.set('UNINET', 'pass', uninet_pass_value)
+        config.set('UNINET', 'firefox', firefox_path_value)
         if file_pdf_path != pdf_form_path.get():
             copy_file(pdf_form_path.get(), file_pdf_path+'_TMP')
             move_file(file_pdf_path+'_TMP', file_pdf_path)
@@ -914,7 +964,7 @@ def save_config(show_info=True):
             showinfo(title='Configuración', message='Configuración guardada exitosamente.')
             notebook.select(0)
 
-ttk.Button(tab3, text='Guardar', style='custom_button.TButton', command=save_config).grid(sticky='E', column=3, row=8, padx=10, pady=20)
+ttk.Button(tab3, text='Guardar', style='custom_button.TButton', command=save_config).grid(sticky='E', column=3, row=9, padx=10, pady=20)
 
 if path_exists(file_config_path):
     notebook.select(0)

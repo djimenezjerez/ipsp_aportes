@@ -3,6 +3,9 @@ geckodriver
 geckodriver.exe
 input/
 output/
+Scripts/
+share/
+pyvenv.cfg
 
 # Editors
 .vscode/
